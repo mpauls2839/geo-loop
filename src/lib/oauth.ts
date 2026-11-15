@@ -26,6 +26,7 @@ export async function loopbackOAuth(o: LoopbackAuthOptions): Promise<{ refreshTo
   let finish!: (code: string) => void;
   let fail!: (err: Error) => void;
   const gotCode = new Promise<string>((res, rej) => ((finish = res), (fail = rej)));
+  gotCode.catch(() => {}); // a bad redirect can arrive before we await it; the await below still throws
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");

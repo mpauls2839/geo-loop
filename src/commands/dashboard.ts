@@ -310,6 +310,7 @@ td.heat.na{background:transparent;color:var(--muted)}
 .vs{display:grid;grid-template-columns:70px 1fr 40px;gap:8px;align-items:center;font-size:12px}.vs .bar{height:10px}.vs .bar.draft span{background:var(--good)}.vs .bar.live span{background:color-mix(in srgb,var(--muted) 60%,transparent)}
 .qid{font-weight:700;font-size:12px;margin-top:4px}
 .draft pre{white-space:pre-wrap;font:13px/1.45 ui-sans-serif,system-ui;margin:0;color:var(--ink);max-height:130px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent)}
+.draft.open pre{max-height:none;-webkit-mask-image:none}.dactions{display:flex;gap:8px;margin-top:2px}.dactions button{font:600 12px ui-sans-serif,system-ui;color:var(--accent);background:none;border:1px solid var(--line);border-radius:8px;padding:4px 10px;cursor:pointer}.dactions button:hover{border-color:var(--accent)}
 .timeline{display:flex;flex-wrap:wrap;gap:8px}.run{border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px}.run b{display:block;font-size:13px}
 .run.ok{border-color:color-mix(in srgb,var(--good) 50%,var(--line))}.run.partial{border-color:color-mix(in srgb,var(--warn) 60%,var(--line))}.run.failed{border-color:var(--bad)}
 .card h3 a,.card h3 a:visited{color:inherit;text-decoration:none;border-bottom:1.5px solid color-mix(in srgb,var(--accent) 55%,transparent)}.card h3 a:hover{color:var(--accent)}
@@ -380,7 +381,7 @@ ${p.rows.map((r) => `<div class="qid">${esc(qById.get(r.q)?.text ?? r.q)}</div>
   const plat = m.platform ? PLATFORM[m.platform] ?? m.platform : d.kind === "pitch" ? "Article" : "Thread";
   const label = m.title ? m.title.slice(0, 90) : host(d.target_url);
   return `<div class="card draft"><div><span class="badge eval">${esc(d.kind === "pitch" ? "PITCH" : "REPLY")}</span> <span class="chip plat-${esc(m.platform ?? "web")}">${esc(plat)}</span>${m.source ? `<span class="chip">${esc(m.source)}</span>` : ""}</div>
-<h3><a href="${esc(d.target_url)}" target="_blank" rel="noopener">${esc(label)} ↗</a></h3><div class="tier">${esc(host(d.target_url))}</div><pre>${esc(d.body.slice(0, 600))}</pre></div>`;
+<h3><a href="${esc(d.target_url)}" target="_blank" rel="noopener">${esc(label)} ↗</a></h3><div class="tier">${esc(host(d.target_url))}</div><pre>${esc(d.body)}</pre><div class="dactions"><button type="button" onclick="const c=this.closest('.draft');c.classList.toggle('open');this.textContent=c.classList.contains('open')?'Show less':'Show full reply'">Show full reply</button><button type="button" onclick="navigator.clipboard.writeText(this.closest('.draft').querySelector('pre').innerText).then(()=>{this.textContent='Copied';setTimeout(()=>this.textContent='Copy reply',1500)})">Copy reply</button></div></div>`;
 }).join("") || `<p class="muted">No drafts for this date.</p>`}</div></section>
 
 <section><h2>Runs</h2><p class="lede">Every run leaves a record. No silent runs.</p>
