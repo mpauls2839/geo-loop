@@ -7,7 +7,7 @@ import { claude, type ClaudeHandle } from "./claude.js";
 // Read-only. Nothing here posts, likes or follows; drafts are written elsewhere for a human.
 //
 // Sources (each best effort, each can fail without failing the run):
-// - X, LinkedIn, Threads: Claude web search restricted to those domains (no free search APIs).
+// - X, LinkedIn: Claude web search restricted to those domains (no free search APIs).
 // - Bluesky: search API with an optional app-password session (BSKY_HANDLE, BSKY_APP_PASSWORD);
 //   without it, web search still covers bsky.app.
 // - Reddit: public JSON search (often blocked from cloud IPs; then web search covers it).
@@ -59,6 +59,10 @@ export const REPLY_LIMIT: Record<SocialPlatform, { chars?: number; words?: numbe
   reddit: { words: 180 },
   hn: { words: 150 },
 };
+
+// reddit.com and threads.net block Anthropic's crawler, and listing them fails the whole search;
+// Reddit comes from its own API and from the threads AI engines cite.
+export const WEB_SEARCH_DOMAINS = ["x.com", "twitter.com", "linkedin.com", "bsky.app"];
 
 export type SocialDeps = {
   fetch?: FetchFn;
@@ -208,7 +212,7 @@ export async function findSocialPosts(
       counts.web =
         (counts.web ?? 0) +
         (await tryIt("web search", async () =>
-          (await webSearch(q, ["x.com", "twitter.com", "linkedin.com", "threads.net", "bsky.app", "reddit.com"])).flatMap((r): SocialPost[] => {
+          (await webSearch(q, WEB_SEARCH_DOMAINS)).flatMap((r): SocialPost[] => {
             const platform = socialPlatform(r.url);
             return platform ? [{ url: r.url, platform, title: r.title, snippet: r.snippet, createdAt: parsePageAge(r.pageAge, now), via: "web-search", query: q }] : [];
           })));
