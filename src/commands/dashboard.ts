@@ -96,6 +96,21 @@ function readProposals(dir: string): Proposal[] {
   return out.sort((a, b) => rank[a.status] - rank[b.status]);
 }
 
+/** Say what the change does: update an existing post, publish a new one, or open a code PR. */
+function badgeText(p: Proposal, dry: boolean): string {
+  if (p.status === "held") return "■ HELD";
+  if (p.status === "eval only") return "EVAL ONLY";
+  if (p.lane === "new_post") return dry ? "✓ WOULD PUBLISH" : "✓ PUBLISHED";
+  if (p.lane === "code_pr") return dry ? "✓ WOULD OPEN PR" : "✓ PR OPENED";
+  return dry ? "✓ WOULD UPDATE" : "✓ UPDATED";
+}
+
+function laneText(lane?: string): string {
+  if (lane === "new_post") return "New blog post";
+  if (lane === "code_pr") return "Site code change (pull request)";
+  return "Update to an existing live post";
+}
+
 export function buildDashboard(config: Config, ledger: Ledger, opts: { date?: string; env?: NodeJS.ProcessEnv; now?: Date; proposedDir?: string } = {}): string {
   const db = ledger.db;
   const date =
@@ -297,7 +312,8 @@ ${qRows.map(({ q, byEngine }) => `<tr><td>${esc(q.text)}<div class="tier">${isEx
 
 <section><h2>What the loop wants to change</h2><p class="lede">Each draft is scored by blind judges (fresh sub-agents shown anonymized pages: "which would you cite?"). Only passes ship; guardrails hold the rest.</p>
 <div class="cards">${proposals.map((p) => `<div class="card">
-<span class="badge ${p.status === "would ship" ? "ship" : p.status === "held" ? "held" : "eval"}">${p.status === "would ship" ? (config.shipMode === "dry_run" ? "✓ WOULD SHIP" : "✓ SHIPPED") : p.status === "held" ? "■ HELD" : "EVAL ONLY"}</span>
+<span class="badge ${p.status === "would ship" ? "ship" : p.status === "held" ? "held" : "eval"}">${badgeText(p, config.shipMode === "dry_run")}</span>
+<div class="tier">${esc(laneText(p.lane))}</div>
 <h3>${p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">/${esc(p.target)} ↗</a>` : `/${esc(p.target)}`}${/\.pass(\d+)$/.test(p.id) ? ` <span class="muted" style="font-weight:500">· retry</span>` : ""}</h3>
 ${p.linkLabel ? `<div class="tier">${esc(p.linkLabel)}</div>` : ""}
 ${p.title || p.excerpt ? `<div class="why">${esc(p.title ?? p.excerpt)}</div>` : ""}

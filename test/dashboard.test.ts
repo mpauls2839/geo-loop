@@ -31,7 +31,7 @@ describe("dashboard", () => {
     expect(html).toContain("names Synta");
     expect(html).toContain("docs.n8n.io".replace("docs.", "")); // n8n.io domain bar
     expect(html).toContain("n8n error trigger");
-    expect(html).toMatch(/WOULD SHIP[\s\S]*\/post-a[\s\S]*10\/10/);
+    expect(html).toMatch(/WOULD UPDATE[\s\S]*\/post-a[\s\S]*10\/10/);
     expect(html).toContain("Held: no CTA link in the body");
     expect(html).toContain("community.n8n.io");
     expect(html).not.toContain("sk-secret-value-123456");
@@ -43,6 +43,7 @@ describe("dashboard", () => {
       .run(JSON.stringify({ prUrl: "https://github.com/o/r/pull/7", pr: 7 }));
     expect(buildDashboard(config, ledger, { date: "2026-11-15", proposedDir: dir })).toContain('href="https://github.com/o/r/pull/7"');
     const live = buildDashboard(testConfig(), ledger, { date: "2026-11-15", proposedDir: dir });
-    expect(live).toContain("✓ SHIPPED");
+    expect(live).toContain("✓ UPDATED");
+    expect(html).toContain("Update to an existing live post");
   });
 });
