@@ -35,6 +35,31 @@ const PATTERNS: [SocialPlatform, RegExp][] = [
   ["threads", /^https?:\/\/(?:www\.)?threads\.(?:net|com)\/@[^/]+\/post\//i],
 ];
 
+const BSKY_ALPHABET = "234567abcdefghijklmnopqrstuvwxyz";
+
+/**
+ * When a post was created, read from its own id where the platform encodes it:
+ * X/Twitter snowflake ids (ms since 2010-11-04), LinkedIn activity ids (first 41 bits = ms),
+ * Bluesky record keys (TIDs: microseconds since epoch). Returns undefined if it can't tell.
+ */
+export function postDateFromUrl(url: string): string | undefined {
+  try {
+    const x = /(?:x|twitter)\.com\/[^/]+\/status\/(\d{6,})/i.exec(url);
+    if (x) return new Date(Number(BigInt(x[1]) >> 22n) + 1288834974657).toISOString();
+    const li = /(?:activity|share|ugcPost)[-:](\d{19})/i.exec(url);
+    if (li) return new Date(Number(BigInt(li[1]) >> 22n)).toISOString();
+    const bs = /bsky\.app\/profile\/[^/]+\/post\/([2-7a-z]{13})/i.exec(url);
+    if (bs) {
+      let v = 0n;
+      for (const ch of bs[1]) v = v * 32n + BigInt(BSKY_ALPHABET.indexOf(ch));
+      return new Date(Number((v >> 10n) / 1000n)).toISOString();
+    }
+  } catch {
+    /* not decodable */
+  }
+  return undefined;
+}
+
 /** The platform of a URL that points at one specific post (not a profile, search or feed). */
 export function socialPlatform(url: string): SocialPlatform | null {
   for (const [p, re] of PATTERNS) if (re.test(url)) return p;
@@ -78,7 +103,7 @@ export function claudeWebSearch(config: Config, handle?: ClaudeHandle): NonNulla
       model: h.model(config.judge.model),
       max_tokens: 1024,
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2, allowed_domains: domains } as Anthropic.Messages.ToolUnion],
-      messages: [{ role: "user", content: `Search for recent social posts where people ask about: ${query}. Just search; a one-line answer is enough.` }],
+      messages: [{ role: "user", content: `Search for social posts from the last few weeks where people ask about: ${query}. Prefer the most recent posts. Just search; a one-line answer is enough.` }],
     });
     const out: { url: string; title: string; snippet: string; pageAge?: string }[] = [];
     for (const b of res.content) {
@@ -138,7 +163,7 @@ async function blueskySearch(q: string, f: FetchFn, jwt: string): Promise<Social
 }
 
 async function redditSearch(q: string, f: FetchFn): Promise<SocialPost[]> {
-  const r = await f(`https://www.reddit.com/search.json?q=${encodeURIComponent(q)}&sort=new&t=month&limit=8`, {
+  const r = await f(`https://www.reddit.com/search.json?q=${encodeURIComponent(q)}&sort=new&t=month&limit=15`, {
     headers: { "user-agent": "geo-loop/0.1 (+https://github.com/mpauls2839/geo-loop)" },
   });
   if (!r.ok) return [];
@@ -177,7 +202,7 @@ export async function findSocialPosts(
   const f = opts.fetch ?? fetch;
   const now = opts.now ?? new Date();
   const notes = opts.notes ?? [];
-  const maxAgeMs = config.gates.threadMaxAgeDays * 864e5;
+  const maxAgeMs = config.outreach.maxPostAgeDays * 864e5;
   const questions = config.questions.slice(0, opts.maxQueries ?? 6).map((q) => q.text);
   const brand = [config.brand.name, ...config.brand.aliases, config.brand.domain].map((b) => b.toLowerCase());
   const found: SocialPost[] = [];
@@ -230,8 +255,11 @@ export async function findSocialPosts(
     if (seen.has(key) || !socialPlatform(p.url)) return false;
     seen.add(key);
     if (brand.some((b) => p.url.toLowerCase().includes(`/${b.replace(/\..*$/, "")}`))) return false;
-    if (p.createdAt && now.getTime() - Date.parse(p.createdAt) > maxAgeMs) return false;
-    return true;
+    // The id-encoded date wins over search-engine "page age"; no confirmed date means no reply.
+    p.createdAt = postDateFromUrl(p.url) ?? p.createdAt;
+    if (!p.createdAt || Number.isNaN(Date.parse(p.createdAt))) return false;
+    const age = now.getTime() - Date.parse(p.createdAt);
+    return age >= -864e5 && age <= maxAgeMs;
   });
   fresh.sort((a, b) => (b.createdAt ? Date.parse(b.createdAt) : 0) - (a.createdAt ? Date.parse(a.createdAt) : 0));
 

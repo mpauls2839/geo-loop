@@ -235,7 +235,8 @@ export async function generateDrafts(config: Config, ledger: Ledger, run: Run, o
       skip(p.url, `already drafted on ${drafted.get(p.url)}`);
       continue;
     }
-    const meta: Record<string, unknown> = { platform: p.platform, title: p.title, createdAt: p.createdAt, via: p.via, query: p.query, source: "social" };
+    const ageDaysPost = p.createdAt ? Math.floor((now.getTime() - Date.parse(p.createdAt)) / 864e5) : undefined;
+    const meta: Record<string, unknown> = { platform: p.platform, title: p.title, createdAt: p.createdAt, ageDays: ageDaysPost, via: p.via, query: p.query, source: "social" };
     let req = socialReplyRequest(config, p);
     let body: string | undefined;
     try {

@@ -138,8 +138,11 @@ export const ConfigSchema = z.object({
       // Search X, LinkedIn, Bluesky, Reddit, Hacker News and Threads for real posts to reply to.
       socialSearch: z.boolean().default(true),
       maxQueries: z.number().int().min(1).default(6),
+      // Social posts (X, LinkedIn, Bluesky, Reddit, HN, Threads) older than this are never reply targets.
+      // A post whose date can't be confirmed is skipped too. Forum threads cited by AI use gates.threadMaxAgeDays.
+      maxPostAgeDays: z.number().int().min(1).default(21),
     })
-    .default({ socialSearch: true, maxQueries: 6 }),
+    .default({ socialSearch: true, maxQueries: 6, maxPostAgeDays: 21 }),
   // "dry_run": ship runs gates and prints payloads but writes nothing. Flip to "live" once reviewed.
   shipMode: z.enum(["live", "dry_run"]).default("live"),
   dataDir: z.string().default(".geo-loop"),

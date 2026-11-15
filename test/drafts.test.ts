@@ -265,10 +265,11 @@ describe("social outreach", () => {
       return new Response("blocked", { status: 403 });
     }) as typeof fetch;
     const webSearch = async () => [
-      { url: "https://x.com/someone/status/1890000000000000001", title: "how do you stop n8n failing silently?", snippet: "", pageAge: "2 days ago" },
-      { url: "https://www.linkedin.com/posts/jane_n8n-reliability-activity-123", title: "n8n in production", snippet: "" },
+      { url: "https://x.com/someone/status/2119943115371446272", title: "how do you stop n8n failing silently?", snippet: "", pageAge: "6 weeks ago" }, // id says 5 days old: id wins
+      { url: "https://www.linkedin.com/posts/jane_n8n-reliability-activity-7526433580646400000-abcd", title: "n8n in production", snippet: "" },
       { url: "https://x.com/someone", title: "profile, not a post", snippet: "" },
-      { url: "https://x.com/old/status/1", title: "ancient", snippet: "", pageAge: "2 years ago" },
+      { url: "https://x.com/old/status/2105447600747446272", title: "6 weeks old by its id", snippet: "", pageAge: "1 day ago" },
+      { url: "https://www.linkedin.com/feed/update/urn:li:activity:abc", title: "undatable", snippet: "" },
     ];
     const reqs: string[] = [];
     const drafter = async (req: { system: string; prompt: string }) => {
@@ -277,8 +278,9 @@ describe("social outreach", () => {
     };
     const s = await generateDrafts(config, ledger, run, { social: { fetch: fetchFake, webSearch }, drafter, now: NOW2 });
     const urls = s.drafted.map((d) => d.targetUrl);
-    expect(urls).toContain("https://x.com/someone/status/1890000000000000001");
-    expect(urls).toContain("https://www.linkedin.com/posts/jane_n8n-reliability-activity-123");
+    expect(urls).toContain("https://x.com/someone/status/2119943115371446272");
+    expect(urls).toContain("https://www.linkedin.com/posts/jane_n8n-reliability-activity-7526433580646400000-abcd");
+    expect(urls.some((u) => u.includes("urn:li:activity:abc"))).toBe(false); // no confirmed date: skipped
     expect(urls).toContain("https://news.ycombinator.com/item?id=123");
     expect(urls).not.toContain("https://x.com/someone");
     expect(urls.some((u) => u.includes("/old/"))).toBe(false);
@@ -293,7 +295,7 @@ describe("social outreach", () => {
     const config = testConfig({ outreach: { socialSearch: true, maxQueries: 1 } });
     const ledger = tempLedger();
     const run = ledger.startRun("drafts", "2026-11-15");
-    const webSearch = async () => [{ url: "https://x.com/a/status/42", title: "q", snippet: "" }];
+    const webSearch = async () => [{ url: "https://x.com/a/status/2119943115371446272", title: "q", snippet: "" }];
     const s = await generateDrafts(config, ledger, run, {
       social: { fetch: (async () => new Response("", { status: 403 })) as typeof fetch, webSearch },
       drafter: async () => "word ".repeat(80),
