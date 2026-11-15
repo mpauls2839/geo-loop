@@ -1,9 +1,9 @@
 ---
 name: geo-loop
-description: Runs the daily geo-loop SEO/GEO improvement run for a site - probe AI engines, map who they cite, pick and draft gated content changes, mock-eval them, ship what passes, draft off-site replies, and publish the private report. Use when asked to "run geo-loop", "run the daily SEO/GEO loop", when the scheduled routine fires, or to run the weekly steer.
+description: Runs a geo-loop SEO/GEO improvement run for a site - probe AI engines, map who they cite, pick and draft gated content changes, mock-eval them, ship what passes, draft off-site replies, steer, and publish the private report. Use when asked to "run geo-loop", "run the SEO/GEO loop", or when the scheduled (weekly) routine fires.
 ---
 
-# geo-loop daily run
+# geo-loop run (weekly by default)
 
 The CLI does the deterministic work and enforces every safety rule. You do the judgment: which pages to change, what to write, and whether a draft is honest and on-positioning. **Never bypass the CLI to write to the CMS, GitHub or any website.** If a command holds or refuses something, record why and move on; do not retry with a weaker change to sneak it through.
 
@@ -11,8 +11,11 @@ Run everything from the data repo (the folder with `geo-loop.config.ts`). `geo-l
 
 ## 0. Preflight
 
+In a cloud session the tool repo is checked out next to the data repo. Install once per session:
 ```bash
-geo-loop onboard --from-env   # cloud only: copies secrets from the environment into .env
+(cd <path-to-geo-loop-checkout> && npm ci --no-audit --no-fund)
+alias geo-loop="node <path-to-geo-loop-checkout>/bin/geo-loop.mjs"   # or use the full path each time
+geo-loop onboard --from-env   # cloud only: copies secrets from the environment into .env (never commit it)
 geo-loop config check
 ```
 If config check fails, stop and report the error. Read `geo-loop.config.ts` for the brand, positioning line, banned phrases and caps, and read the product facts file it names. These are the only claims you may make about the product.
@@ -92,12 +95,14 @@ geo-loop report      # writes <dataDir>/report/index.html
 
 ## 7. Persist
 
-Commit the ledger and report to the data repo (`git add .geo-loop && git commit -m "geo-loop run <date>" && git push`). Never commit `.env`.
+The ledger is the loop's memory (snapshots for `revert`, cooldowns, trends). Commit it and the report to the data repo and push:
+`git add .geo-loop && git commit -m "geo-loop run <date>" && git push`. Never commit `.env`.
+If pushing to the default branch is refused, push to the branch `geo-loop/state` and say so in the final message; the next run must start from that branch.
 
 ## 8. Final message
 
 Three to six lines: run status, citation share per engine vs the previous run, what shipped (change ids + `geo-loop revert <id>`), what was held and why, and drafts waiting for a human. If nothing shipped, say why.
 
-## Weekly steer (Sundays)
+## Steer (end of every weekly run)
 
-Read the last 7 days of runs and changes from the report. Write a short diagnosis that cites numbers. You may propose new techniques, questions or gate settings **only as a pull request against `geo-loop.config.ts`** for a human to merge; never edit the config directly in a run.
+Read the previous runs and changes in the report. Write a short diagnosis that cites numbers. You may propose new techniques, questions or gate settings **only as a pull request against `geo-loop.config.ts`** for a human to merge; never edit the config directly in a run.
