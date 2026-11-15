@@ -1,0 +1,34 @@
+{
+  "name": "geo-loop",
+  "version": "0.1.0",
+  "description": "An open-source SEO/GEO improvement loop: probe AI engines, map who they cite, ship gated content changes, measure, adapt.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "geo-loop": "./bin/geo-loop.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/perplexity": "^5.0.35",
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@sanity/client": "^8.16.0",
+    "ai": "^7.0.173",
+    "commander": "^15.1.0",
+    "jiti": "^2.7.0",
+    "openai": "^7.57.0",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^5.9.3",
+    "vitest": "^5.1.0"
+  }
+}
