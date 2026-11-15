@@ -1,19 +1,27 @@
 # geo-loop
 
-An open-source SEO/GEO improvement loop for small SaaS teams. Every day it:
+An open-source CLI (plus a Claude skill) that improves how often AI engines and search cite your site. It does three things:
 
-1. **Probes** ChatGPT, Perplexity and Claude (web search on) with your buyers' questions and records which URLs they cite.
-2. **Maps** the third-party sites AI engines trust for your topics, so you know where you need to show up.
-3. **Plans and drafts** changes with Claude: refreshes to pages that already rank, new posts, metadata/schema/llms.txt PRs, and off-site reply and pitch drafts.
-4. **Evaluates** each draft with a mock eval: shown your page next to the pages engines cite today, does an LLM judge pick yours?
-5. **Ships** what passes, behind hard gates (positioning rules, no unsourced numbers, slug immutability, daily caps), with a snapshot and one-command `revert`.
-6. **Measures and adapts** weekly: real citation share and AI-referred signups re-rank which techniques it tries next, and it checks whether the mock eval actually predicts real citations.
+1. **Measures** where you stand today in SEO and GEO: which AI answers cite your site or name your brand, and which sites they trust instead.
+2. **Changes** your content to close the gaps: new blog posts, rewrites of existing ones, and drafted replies to real social posts.
+3. **Tracks** the results week over week, so you can see which changes moved the numbers.
 
-Off-site work (Reddit, forums, listicles) is drafted for a human to post. The tool never posts or sends anything.
+![geo-loop dashboard](docs/dashboard.png)
+
+## How it works
+
+1. **Onboard.** `geo-loop onboard` connects your analytics (Google Search Console) and collects model keys safely. One Vercel AI Gateway key is enough to query all the engines, or bring each provider's own key.
+2. **Probe.** It asks Claude, ChatGPT and Perplexity (with web search on) your buyers' questions and records every source they cite. The questions come from your own list, real search data, or both. That gives you a baseline: citation share, mention rate, and a map of the sites AI engines trust for your topics.
+3. **Propose.** From the gaps, it drafts new blog posts, rewrites of pages that already rank, and replies to recent posts on X, LinkedIn, Bluesky, Hacker News and forums where your product fits.
+4. **Eval.** Before anything ships, a separate judge (a fresh sub-agent that never saw the drafting) compares anonymized pages and picks the one it would cite. A rewrite has to beat the live page by 20 points; a new post has to win at least 40% of the time. This predicts, in theory, which content will work before real engines ever see it.
+5. **Ship safely.** Changes that pass hard guardrails (no unsourced numbers, positioning rules, per-run caps, cooldowns) publish to your CMS, with a snapshot first and one-command `revert`. Start in dry run. Social replies are drafts only: a human posts them.
+6. **Repeat weekly.** It runs as a scheduled cloud agent and writes every probe, change and verdict to a ledger committed to git, plus a dashboard. Each week is compared with the last, and any change can be rolled back from its snapshot.
+
+Not built yet: using real citation and signup data to choose which techniques to try next, and deciding on its own which changes to keep or revert.
 
 ## Why
 
-Most GEO tools monitor. A few patch technical SEO. Few close the loop: try a change, measure the result, keep it or roll it back, and learn which techniques work for your site. The research says AI visibility tracks mentions on other sites more than on-site edits (see Ahrefs' brand-mention study), so the citation map and off-site drafts are first-class here, not an afterthought.
+Most GEO tools only monitor. A few patch technical SEO. Few close the loop: try a change, measure the result, keep it or roll it back. AI visibility also tracks mentions on other sites more than on-site edits, so the citation map and social reply drafts are first-class here, not an afterthought.
 
 ## Quick start
 
@@ -99,9 +107,9 @@ Shipping needs `SANITY_WRITE_TOKEN` (Sanity CMS lane) and `GITHUB_TOKEN` (code-P
 
 Exit codes: `0` ok, `2` partial (some work held or skipped, with reasons), `1` failed. A run never reports success silently: every held or skipped item has a reason in the ledger.
 
-## Running it daily
+## Running it weekly
 
-The `skill/geo-loop` folder is a Claude skill that drives the loop: the CLI does the deterministic work, Claude does the judgment (what to change, drafting, review). Schedule it as a Claude Code cloud routine, or any cron that can run Claude Code.
+The `skill/geo-loop` folder is a Claude skill that drives the loop: the CLI does the deterministic work, Claude does the judgment (what to change, drafting, review). Schedule it as a Claude Code cloud routine (Synta runs it every Monday), or any cron that can run Claude Code.
 
 ## Case study
 
