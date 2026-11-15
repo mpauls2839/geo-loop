@@ -49,6 +49,7 @@ config
       console.log(`brand   ${c.brand.name} (${c.brand.domain})`);
       console.log(`engines ${engines.map((e) => `${e.id}[${e.via}]`).join(", ")}`);
       console.log(`questions ${c.questions.length} across ${new Set(c.questions.map((q) => q.topic)).size} topics`);
+      console.log(`ship    ${c.shipMode === "dry_run" ? "DRY RUN (nothing is written)" : "live"}`);
       console.log(`caps    new ${c.caps.newPosts} / refresh ${c.caps.refreshes} / pr ${c.caps.codePrs} / drafts ${c.caps.offsiteDrafts}`);
       if (c.positioning.line) console.log(`positioning "${c.positioning.line}"  banned: ${c.positioning.bannedPhrases.join(" | ") || "(none)"}`);
       for (const w of warnings) console.log(`warning: ${w}`);

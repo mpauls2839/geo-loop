@@ -93,7 +93,8 @@ export function register(program: Command, ctx: () => Promise<Ctx>) {
             sanity,
             github: makeGithub(c.config),
             productFacts: loadProductFacts(c.config),
-            dryRun: !!o.dryRun,
+            // config.shipMode "dry_run" forces a dry run (e.g. a new routine's first runs).
+            dryRun: !!o.dryRun || c.config.shipMode === "dry_run",
             testDataset: !!o.testDataset,
             localCheck: localCheckFromOpts(o),
             previewUrl: o.previewUrl,

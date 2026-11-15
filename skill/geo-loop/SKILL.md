@@ -85,6 +85,7 @@ Write `/tmp/<slug>.change.json`:
 geo-loop ship --change /tmp/<slug>.change.json
 ```
 Exit 0 shipped, 2 held/queued (reason printed), 1 ship failed (it auto-restored). Do not re-run a held change unchanged.
+If `shipMode` in the config is `"dry_run"`, ship writes nothing and prints the exact payload: that is expected. Keep each `change.json` in `.geo-loop/proposed/<date>/` so a human can review what would have shipped.
 
 ## 6. Off-site drafts and report
 
@@ -101,7 +102,7 @@ If pushing to the default branch is refused, push to the branch `geo-loop/state`
 
 ## 8. Final message
 
-Three to six lines: run status, citation share per engine vs the previous run, what shipped (change ids + `geo-loop revert <id>`), what was held and why, and drafts waiting for a human. If nothing shipped, say why.
+Three to six lines: run status, ship mode (live or dry run), citation share per engine vs the previous run, what shipped (change ids + `geo-loop revert <id>`), what was held and why, and drafts waiting for a human. If nothing shipped, say why.
 
 ## Steer (end of every weekly run)
 

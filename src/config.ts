@@ -95,6 +95,8 @@ export const ConfigSchema = z.object({
   aiReferrers: z
     .array(z.string())
     .default(["chatgpt.com", "chat.openai.com", "perplexity.ai", "claude.ai", "gemini.google.com", "copilot.microsoft.com"]),
+  // "dry_run": ship runs gates and prints payloads but writes nothing. Flip to "live" once reviewed.
+  shipMode: z.enum(["live", "dry_run"]).default("live"),
   dataDir: z.string().default(".geo-loop"),
 });
 
