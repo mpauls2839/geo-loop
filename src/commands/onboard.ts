@@ -21,7 +21,8 @@ export type KeySpec = {
 export const KEYS: KeySpec[] = [
   { name: "AI_GATEWAY_API_KEY", group: "engines", secret: true, help: "Vercel AI Gateway key: one key for Claude, ChatGPT and Perplexity. vercel.com/dashboard -> AI Gateway -> API Keys." },
   { name: "ANTHROPIC_API_KEY", group: "engines", secret: true, help: "Optional. Direct Anthropic key; used instead of the gateway for Claude and the judge." },
-  { name: "OPENAI_API_KEY", group: "engines", secret: true, help: "Optional. Direct OpenAI key for the ChatGPT engine." },
+  { name: "OPENAI_API_KEY", group: "engines", secret: true, help: "Optional. OpenAI key for the ChatGPT engine; also the eval judge's key for any OpenAI-compatible endpoint." },
+  { name: "OPENAI_BASE_URL", group: "engines", secret: false, help: "Optional. OpenAI-compatible endpoint for the eval judge (OpenRouter, Ollama http://localhost:11434/v1, LM Studio, vLLM). Leave empty for OpenAI." },
   { name: "PERPLEXITY_API_KEY", group: "engines", secret: true, help: "Optional. Direct Perplexity key for the Sonar engine." },
   { name: "SANITY_WRITE_TOKEN", group: "shipping", secret: true, help: "Sanity API token with Editor rights (sanity.io/manage -> project -> API -> Tokens). Needed to ship blog changes." },
   { name: "GITHUB_TOKEN", group: "shipping", secret: true, help: "Fine-grained GitHub token with Contents + Pull requests read/write on your site repo. Needed for the code-PR lane." },
@@ -146,7 +147,7 @@ export async function checkKeys(
   if (oa)
     await status("OPENAI_API_KEY", async () => {
       try {
-        await new OpenAI({ apiKey: oa, baseURL: "https://api.openai.com/v1", maxRetries: 0 }).models.list();
+        await new OpenAI({ apiKey: oa, baseURL: get("OPENAI_BASE_URL") ?? "https://api.openai.com/v1", maxRetries: 0 }).models.list();
         return { name: "OPENAI_API_KEY", status: "ok", detail: "valid" };
       } catch (err) {
         if (err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError)

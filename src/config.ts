@@ -38,8 +38,14 @@ export const ConfigSchema = z.object({
   competitors: z.record(z.string(), z.array(z.string().url())).default({}),
   engines: z.array(Engine).default([{ id: "claude" }, { id: "chatgpt" }, { id: "perplexity" }] as never),
   judge: z
-    .object({ model: z.string().default("claude-opus-5-5"), k: z.number().int().min(1).default(10) })
-    .default({ model: "claude-opus-5-5", k: 10 }),
+    .object({
+      // auto: Anthropic key, else OpenAI-compatible key, else AI Gateway.
+      // external: no API calls; `eval --prepare` writes prompts for a host agent, `eval --answers` scores them.
+      provider: z.enum(["auto", "anthropic", "openai", "gateway", "external"]).default("auto"),
+      model: z.string().default("claude-opus-5-5"),
+      k: z.number().int().min(1).default(10),
+    })
+    .default({ provider: "auto", model: "claude-opus-5-5", k: 10 }),
   probe: z
     .object({
       samples: z.number().int().min(1).default(3),

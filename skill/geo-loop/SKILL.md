@@ -61,9 +61,24 @@ Rules that the gates will enforce anyway (save the round trip):
 
 ## 4. Mock eval
 
+How the judge runs depends on `judge.provider` in the config.
+
+**API judge** (`auto`, `anthropic`, `openai`, `gateway`):
 ```bash
 geo-loop eval --page <slug> --draft /tmp/<slug>.draft.md --questions <ids> --json > /tmp/<slug>.eval.json
 ```
+
+**External judge** (`external`, e.g. when this agent host can run sub-agents and no judge API key is wanted). Three steps:
+1. `geo-loop eval --page <slug> --draft /tmp/<slug>.draft.md --questions <ids> --prepare /tmp/<slug>.judge.json`
+   This writes anonymized, shuffled judge prompts (`calls[]`, each with `system`, `prompt`, `labels`, empty `answer`).
+2. You wrote the draft, so **you must not judge it**. For each question in the job, start a fresh sub-agent
+   (Claude Code: the Agent/Task tool; other hosts: their sub-agent or a separate session) and give it ONLY that
+   question's calls: their `system` and `prompt` text and the instruction "for each call, reply with only the
+   letter of the page you would cite". No repo access, no files, no mention of the brand, of which page is ours,
+   or of the draft. Write each returned letter into that call's `answer` in the job file. Change nothing else.
+3. `geo-loop eval --answers /tmp/<slug>.judge.json --json > /tmp/<slug>.eval.json`
+   It refuses a job with missing answers, and fails a call if the prompts no longer match.
+
 Only a `decision.verdict` of `pass` may ship. A fail is a normal outcome: note the reason and move on.
 
 ## 5. Ship

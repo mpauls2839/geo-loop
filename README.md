@@ -36,16 +36,31 @@ Each engine uses its provider's own key when present, otherwise a Vercel AI Gate
 | ChatGPT | `OPENAI_API_KEY` | `AI_GATEWAY_API_KEY` |
 | Perplexity | `PERPLEXITY_API_KEY` | `AI_GATEWAY_API_KEY` |
 
+### The eval judge
+
+The mock eval asks a judge model "which of these anonymized pages would you cite?". Pick where it runs with `judge.provider`:
+
+| `judge.provider` | Uses |
+|---|---|
+| `auto` (default) | `ANTHROPIC_API_KEY`, else `OPENAI_API_KEY`, else `AI_GATEWAY_API_KEY` |
+| `anthropic` | Claude via `ANTHROPIC_API_KEY` |
+| `openai` | Any OpenAI-compatible endpoint: OpenAI, OpenRouter, or a local model (Ollama, LM Studio, vLLM) via `OPENAI_BASE_URL` |
+| `gateway` | Any model on the Vercel AI Gateway (`judge.model` like `openai/gpt-5.4`) |
+| `external` | No API calls. `geo-loop eval --prepare job.json` writes the prompts; a host agent (Claude Code, Codex, Cursor...) has fresh sub-agents fill in each `answer`; `geo-loop eval --answers job.json` scores them |
+
+`external` lets an agent host judge with its own model, but the agent that wrote a draft must never judge it: the skill hands each question to a fresh sub-agent that sees only the anonymized prompts.
+
 Shipping needs `SANITY_WRITE_TOKEN` (Sanity CMS lane) and `GITHUB_TOKEN` (code-PR lane). Measurement uses Google Search Console and PostHog.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
+| `geo-loop onboard` | Set up config and keys safely (hidden input, `.env` 600 + gitignored, free key checks) |
 | `geo-loop config check` | Validate config and keys |
 | `geo-loop probe [--force]` | Ask every engine every question; record citations |
 | `geo-loop map [--by-topic]` | Citation-source map |
-| `geo-loop eval --page <url> [--draft <file>]` | Mock eval: win rate vs currently cited pages |
+| `geo-loop eval --page <url> [--draft <file>]` | Mock eval: win rate vs currently cited pages (`--prepare` / `--answers` for an external judge) |
 | `geo-loop ship --change <file> [--dry-run]` | Gate, snapshot, publish, verify live |
 | `geo-loop revert <change-id>` | Restore the snapshot / unpublish / revert PR |
 | `geo-loop drafts` | Off-site reply and pitch drafts from the map |
