@@ -39,6 +39,24 @@ export function topicFor(text: string): string {
   return "general";
 }
 
+function editDistance(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+
+/** Navigational brand searches, misspellings included ("sinta ai", "synidia"): not buyer questions. */
+export function isBrandSearch(query: string, brandWords: string[]): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return true; // single-word queries are navigational, never questions
+  if (words.length > 2) return false;
+  return words.some((w) =>
+    brandWords.some((b) => b.length >= 4 && w.length >= 4 && w[0] === b[0] && editDistance(w, b) / Math.max(w.length, b.length) <= 0.45),
+  );
+}
+
 const idFor = (text: string) => `d-${createHash("sha256").update(text.toLowerCase().trim()).digest("hex").slice(0, 8)}`;
 
 /** Readable title from a thread URL slug, e.g. /t/silent-failures-in-production/308805 -> "silent failures in production". */
@@ -67,7 +85,7 @@ export async function suggestQuestions(config: Config, ledger: Ledger, deps: Sug
       try {
         const rows = await deps.gsc();
         for (const r of rows) {
-          if (branded(r.query) || r.impressions < 10) continue;
+          if (branded(r.query) || isBrandSearch(r.query, brandWords) || r.impressions < 10) continue;
           raw.push({ text: r.query, score: 2 * Math.log10(r.impressions + 1) + (r.position <= 20 ? 1 : 0), source: "gsc", evidence: `${r.impressions} impressions, pos ${r.position.toFixed(1)}` });
         }
         notes.push(`gsc: ${rows.length} queries read`);

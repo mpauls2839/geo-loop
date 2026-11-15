@@ -105,3 +105,12 @@ describe("Google Search Console client", () => {
     expect(calls[1]).toContain(encodeURIComponent("sc-domain:acme.dev"));
   });
 });
+
+describe("brand-typo filter", () => {
+  it("drops navigational brand searches and misspellings, keeps real questions", async () => {
+    const { isBrandSearch } = await import("../src/commands/questions.ts");
+    const brand = ["synta", "synta.io"];
+    for (const q of ["sintax ai", "sinta ai", "synidia", "synta"]) expect(isBrandSearch(q, brand)).toBe(true);
+    for (const q of ["kestra vs n8n", "n8n syntax error", "n8n execute command", "n8n alternatives"]) expect(isBrandSearch(q, brand)).toBe(false);
+  });
+});
