@@ -37,6 +37,11 @@ describe("dashboard", () => {
     expect(html).not.toContain("sk-secret-value-123456");
     expect(html).not.toMatch(/<script/i);
     expect(html).toContain("DRY RUN");
+    expect(html).toContain('href="https://synta.io/blog/post-a"'); // no PR: links the live post
+    expect(html).toContain('href="https://community.n8n.io/t/x/1"'); // outreach card links the real thread
+    ledger.db.prepare("INSERT INTO changes (id, date, lane, target, status, external_ref, created_at, updated_at) VALUES ('2026-11-15-refresh-post-a','2026-11-15','refresh','post-a','shipped',?, 'x','x')")
+      .run(JSON.stringify({ prUrl: "https://github.com/o/r/pull/7", pr: 7 }));
+    expect(buildDashboard(config, ledger, { date: "2026-11-15", proposedDir: dir })).toContain('href="https://github.com/o/r/pull/7"');
     const live = buildDashboard(testConfig(), ledger, { date: "2026-11-15", proposedDir: dir });
     expect(live).toContain("✓ SHIPPED");
   });

@@ -22,6 +22,10 @@ const host = (u: string) => {
 
 type Proposal = {
   id: string;
+  changeId?: string;
+  lane?: string;
+  link?: string;
+  linkLabel?: string;
   target: string;
   status: "would ship" | "held" | "eval only";
   reason: string;
@@ -65,14 +69,18 @@ function readProposals(dir: string): Proposal[] {
     }
     let status: Proposal["status"] = "eval only";
     let reason = verdictReason ?? "";
+    let changeId: string | undefined;
     if (existsSync(shipFile)) {
       const first = readFileSync(shipFile, "utf8").split("\n")[0].trim().split(/\s{2,}/);
       status = first[0] === "dry_run" || first[0] === "shipped" ? "would ship" : "held";
+      changeId = first[1];
       if (status === "held") reason = first.slice(2).join(" ") || reason;
     }
     const content = (change.content ?? {}) as { title?: string; excerpt?: string };
     out.push({
       id: base,
+      changeId,
+      lane: String(change.lane ?? "refresh"),
       target: String(change.target ?? base),
       status,
       reason,
@@ -137,9 +145,26 @@ export function buildDashboard(config: Config, ledger: Ledger, opts: { date?: st
 
   // ---------- acting ----------
   const proposals = readProposals(opts.proposedDir ?? resolve(config.dataDir, "proposed", date));
-  const drafts = db.prepare("SELECT kind, target_url, body, status FROM drafts WHERE date = ? ORDER BY kind, target_url").all(date) as {
-    kind: string; target_url: string; body: string; status: string;
+  // Link each change: its PR when the loop opened one, otherwise the live blog post it targets.
+  const base = config.site.baseUrl.replace(/\/$/, "") + config.site.blogPath.replace(/\/?$/, "/");
+  for (const p of proposals) {
+    const row = p.changeId
+      ? (db.prepare("SELECT external_ref, lane FROM changes WHERE id = ?").get(p.changeId) as { external_ref: string | null; lane: string } | undefined)
+      : undefined;
+    const ref = row?.external_ref ? (JSON.parse(row.external_ref) as { prUrl?: string; pr?: number }) : {};
+    if (ref.prUrl) {
+      p.link = ref.prUrl;
+      p.linkLabel = `PR #${ref.pr ?? ""}`.trim();
+    } else if ((row?.lane ?? p.lane) !== "code_pr") {
+      p.link = base + p.target;
+      p.linkLabel = "live post";
+    }
+  }
+  const drafts = db.prepare("SELECT kind, target_url, body, status, meta FROM drafts WHERE date = ? AND status = 'new' ORDER BY kind DESC, target_url").all(date) as {
+    kind: string; target_url: string; body: string; status: string; meta: string;
   }[];
+  const PLATFORM: Record<string, string> = { x: "X", linkedin: "LinkedIn", bluesky: "Bluesky", reddit: "Reddit", hn: "Hacker News", threads: "Threads", discourse: "Forum", forum: "Forum", stackexchange: "Stack Overflow", github: "GitHub" };
+  const draftMeta = (m: string) => { try { return JSON.parse(m) as { platform?: string; title?: string; source?: string }; } catch { return {}; } };
   const runs = db.prepare("SELECT kind, status, started_at, shipped, held, skipped FROM runs WHERE date = ? ORDER BY started_at").all(date) as {
     kind: string; status: string; started_at: string; shipped: number; held: number; skipped: number;
   }[];
@@ -223,6 +248,8 @@ td.heat.na{background:transparent;color:var(--muted)}
 .draft pre{white-space:pre-wrap;font:13px/1.45 ui-sans-serif,system-ui;margin:0;color:var(--ink);max-height:130px;overflow:hidden;-webkit-mask-image:linear-gradient(#000 70%,transparent)}
 .timeline{display:flex;flex-wrap:wrap;gap:8px}.run{border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px}.run b{display:block;font-size:13px}
 .run.ok{border-color:color-mix(in srgb,var(--good) 50%,var(--line))}.run.partial{border-color:color-mix(in srgb,var(--warn) 60%,var(--line))}.run.failed{border-color:var(--bad)}
+.card h3 a,.card h3 a:visited{color:inherit;text-decoration:none;border-bottom:1.5px solid color-mix(in srgb,var(--accent) 55%,transparent)}.card h3 a:hover{color:var(--accent)}
+.chip.plat-x{background:#111;color:#fff}.chip.plat-linkedin{background:#0a66c2;color:#fff}.chip.plat-bluesky{background:#1185fe;color:#fff}.chip.plat-reddit{background:#ff4500;color:#fff}.chip.plat-hn{background:#ff6600;color:#fff}.chip.plat-threads{background:#000;color:#fff}
 .muted{color:var(--muted)}footer{color:var(--muted);font-size:12px;text-align:center;margin-top:24px}
 @media (max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.loop{grid-template-columns:repeat(4,1fr)}.step:nth-child(4)::after{display:none}.grid2{grid-template-columns:1fr}}
 @media (max-width:520px){.kpis{grid-template-columns:1fr}.loop{grid-template-columns:repeat(2,1fr)}.step:nth-child(2n)::after{display:none}.row{grid-template-columns:110px 1fr 56px}}
@@ -271,7 +298,8 @@ ${qRows.map(({ q, byEngine }) => `<tr><td>${esc(q.text)}<div class="tier">${isEx
 <section><h2>What the loop wants to change</h2><p class="lede">Each draft is scored by blind judges (fresh sub-agents shown anonymized pages: "which would you cite?"). Only passes ship; guardrails hold the rest.</p>
 <div class="cards">${proposals.map((p) => `<div class="card">
 <span class="badge ${p.status === "would ship" ? "ship" : p.status === "held" ? "held" : "eval"}">${p.status === "would ship" ? (config.shipMode === "dry_run" ? "✓ WOULD SHIP" : "✓ SHIPPED") : p.status === "held" ? "■ HELD" : "EVAL ONLY"}</span>
-<h3>/${esc(p.target)}${/\.pass(\d+)$/.test(p.id) ? ` <span class="muted" style="font-weight:500">· retry</span>` : ""}</h3>
+<h3>${p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">/${esc(p.target)} ↗</a>` : `/${esc(p.target)}`}${/\.pass(\d+)$/.test(p.id) ? ` <span class="muted" style="font-weight:500">· retry</span>` : ""}</h3>
+${p.linkLabel ? `<div class="tier">${esc(p.linkLabel)}</div>` : ""}
 ${p.title || p.excerpt ? `<div class="why">${esc(p.title ?? p.excerpt)}</div>` : ""}
 ${p.rows.map((r) => `<div class="qid">${esc(qById.get(r.q)?.text ?? r.q)}</div>
 <div class="vs"><span class="muted">live page</span>${bar((r.live ?? 0) * 10, 10, "live")}<span class="num">${r.live == null ? "–" : Math.round(r.live * 10) + "/10"}</span></div>
@@ -281,7 +309,13 @@ ${p.rows.map((r) => `<div class="qid">${esc(qById.get(r.q)?.text ?? r.q)}</div>
 </div>`).join("") || `<p class="muted">No proposals for this date.</p>`}</div></section>
 
 <section><h2>Outreach drafts for a human</h2><p class="lede">Mentions on other sites drive AI visibility, so the loop drafts replies and pitches. It never posts anything itself.</p>
-<div class="cards">${drafts.map((d) => `<div class="card draft"><span class="badge eval">${esc(d.kind.toUpperCase())}</span><h3>${esc(host(d.target_url))}</h3><pre>${esc(d.body.slice(0, 600))}</pre></div>`).join("") || `<p class="muted">No drafts for this date.</p>`}</div></section>
+<div class="cards">${drafts.map((d) => {
+  const m = draftMeta(d.meta);
+  const plat = m.platform ? PLATFORM[m.platform] ?? m.platform : d.kind === "pitch" ? "Article" : "Thread";
+  const label = m.title ? m.title.slice(0, 90) : host(d.target_url);
+  return `<div class="card draft"><div><span class="badge eval">${esc(d.kind === "pitch" ? "PITCH" : "REPLY")}</span> <span class="chip plat-${esc(m.platform ?? "web")}">${esc(plat)}</span>${m.source ? `<span class="chip">${esc(m.source)}</span>` : ""}</div>
+<h3><a href="${esc(d.target_url)}" target="_blank" rel="noopener">${esc(label)} ↗</a></h3><div class="tier">${esc(host(d.target_url))}</div><pre>${esc(d.body.slice(0, 600))}</pre></div>`;
+}).join("") || `<p class="muted">No drafts for this date.</p>`}</div></section>
 
 <section><h2>Runs</h2><p class="lede">Every run leaves a record. No silent runs.</p>
 <div class="timeline">${runs.map((r) => `<div class="run ${esc(r.status)}"><b>${esc(r.kind)}</b>${esc(r.started_at.slice(11, 16))} UTC · ${esc(r.status)}${r.shipped || r.held ? ` · ${r.shipped} ok, ${r.held} held` : ""}</div>`).join("")}</div></section>

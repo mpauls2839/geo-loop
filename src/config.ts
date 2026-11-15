@@ -128,6 +128,15 @@ export const ConfigSchema = z.object({
   aiReferrers: z
     .array(z.string())
     .default(["chatgpt.com", "chat.openai.com", "perplexity.ai", "claude.ai", "gemini.google.com", "copilot.microsoft.com"]),
+  outreach: z
+    .object({
+      // Added by code to any draft that names the brand. Default: "Full disclosure, I run <brand name>".
+      disclosure: z.string().optional(),
+      // Search X, LinkedIn, Bluesky, Reddit, Hacker News and Threads for real posts to reply to.
+      socialSearch: z.boolean().default(true),
+      maxQueries: z.number().int().min(1).default(6),
+    })
+    .default({ socialSearch: true, maxQueries: 6 }),
   // "dry_run": ship runs gates and prints payloads but writes nothing. Flip to "live" once reviewed.
   shipMode: z.enum(["live", "dry_run"]).default("live"),
   dataDir: z.string().default(".geo-loop"),

@@ -87,7 +87,7 @@ describe("drafts", () => {
     const { fn } = fakeFetch({ [REDDIT_JSON]: reddit(daysAgo(30)), [FORUM_JSON]: discourse(daysAgo(10)) });
     const d = fakeDrafter((req) => (req.prompt.includes("reddit") ? "Add an Error Trigger workflow. Synta can watch it too." : "Use the Append or Update operation with a header row."));
     const run = ledger.startRun("drafts", DATE);
-    const s = await generateDrafts(config, ledger, run, { fetch: fn, drafter: d.drafter, now: NOW });
+    const s = await generateDrafts(config, ledger, run, { social: false, fetch: fn, drafter: d.drafter, now: NOW });
     expect(s.drafted.map((x) => x.targetUrl).sort()).toEqual([FORUM, REDDIT].sort());
     const rows = draftRows(ledger);
     const r = rows.find((x) => x.target_url === REDDIT)!;
@@ -115,7 +115,7 @@ describe("drafts", () => {
     });
     const d = fakeDrafter(() => "Subject: n8n reliability for your list\n\nHi Jane, I run Synta. Your readers comparing Kestra would want a way to keep n8n running.");
     const run = ledger.startRun("drafts", DATE);
-    const s = await generateDrafts(config, ledger, run, { fetch: fn, drafter: d.drafter, now: NOW });
+    const s = await generateDrafts(config, ledger, run, { social: false, fetch: fn, drafter: d.drafter, now: NOW });
     expect(s.drafted).toHaveLength(1);
     const p = draftRows(ledger)[0];
     expect(p).toMatchObject({ kind: "pitch", target_url: LISTICLE, status: "new" });
@@ -139,7 +139,7 @@ describe("drafts", () => {
       [LISTICLE]: `<title>Best n8n alternatives</title><a href="https://kestra.io">k</a>`,
     });
     const d = fakeDrafter(() => "Helpful answer.");
-    await generateDrafts(config, ledger, ledger.startRun("drafts", DATE), { fetch: fn, drafter: d.drafter, now: NOW });
+    await generateDrafts(config, ledger, ledger.startRun("drafts", DATE), { social: false, fetch: fn, drafter: d.drafter, now: NOW });
     expect(calls.length).toBeGreaterThan(0);
     for (const c of calls) {
       expect(c.init?.method ?? "GET").toBe("GET");
@@ -166,7 +166,7 @@ describe("drafts", () => {
     });
     const d = fakeDrafter(() => "Answer.");
     const run = ledger.startRun("drafts", DATE);
-    const s = await generateDrafts(config, ledger, run, { fetch: fn, drafter: d.drafter, now: NOW });
+    const s = await generateDrafts(config, ledger, run, { social: false, fetch: fn, drafter: d.drafter, now: NOW });
     expect(s.skipped).toEqual(
       expect.arrayContaining([
         { url: OLD, reason: "thread is 400 days old (max 365)" },
@@ -197,7 +197,7 @@ describe("drafts", () => {
       return "It is basically an mcp layer.";
     });
     const run = ledger.startRun("drafts", DATE);
-    const s = await generateDrafts(config, ledger, run, { fetch: fn, drafter: d.drafter, now: NOW });
+    const s = await generateDrafts(config, ledger, run, { social: false, fetch: fn, drafter: d.drafter, now: NOW });
     expect(d.reqs).toHaveLength(4);
     expect(d.reqs[1].prompt).toContain('banned phrase "MCP layer"');
     expect(s.drafted.map((x) => x.targetUrl)).toEqual([A]);
@@ -215,10 +215,10 @@ describe("drafts", () => {
     const routes = Object.fromEntries(urls.map((u) => [`${u.replace("reddit.com", "www.reddit.com")}.json?raw_json=1`, reddit(daysAgo(1))]));
     const { fn } = fakeFetch(routes);
     const d = fakeDrafter(() => "Answer.");
-    const s1 = await generateDrafts(config, ledger, ledger.startRun("drafts", DATE), { fetch: fn, drafter: d.drafter, now: NOW });
+    const s1 = await generateDrafts(config, ledger, ledger.startRun("drafts", DATE), { social: false, fetch: fn, drafter: d.drafter, now: NOW });
     expect(s1.drafted).toHaveLength(2);
     expect(s1.skipped).toEqual([{ url: "2 target(s)", reason: "daily off-site draft cap reached (2); left for tomorrow" }]);
-    const s2 = await generateDrafts(config, ledger, ledger.startRun("drafts", DATE), { fetch: fn, drafter: d.drafter, now: NOW });
+    const s2 = await generateDrafts(config, ledger, ledger.startRun("drafts", DATE), { social: false, fetch: fn, drafter: d.drafter, now: NOW });
     expect(s2.drafted).toHaveLength(0);
     expect(draftRows(ledger)).toHaveLength(2);
   });
@@ -229,12 +229,12 @@ describe("drafts", () => {
     seed(ledger, [{ q: "q1", urls: [REDDIT] }]);
     const { fn } = fakeFetch({ [REDDIT_JSON]: reddit(daysAgo(1)) });
     const ok = fakeDrafter(() => "Answer.");
-    const s = await generateDrafts(config, ledger, ledger.startRun("drafts", DATE), { fetch: fn, drafter: ok.drafter, now: NOW, dryRun: true });
+    const s = await generateDrafts(config, ledger, ledger.startRun("drafts", DATE), { social: false, fetch: fn, drafter: ok.drafter, now: NOW, dryRun: true });
     expect(s.drafted).toHaveLength(1);
     expect(draftRows(ledger)).toHaveLength(0);
 
     const run = ledger.startRun("drafts", DATE);
-    const s2 = await generateDrafts(config, ledger, run, {
+    const s2 = await generateDrafts(config, ledger, run, { social: false,
       fetch: fn, now: NOW,
       drafter: async () => { throw new Error("401 bad key sk-ant-api03-leakedleakedleaked"); },
     });
@@ -246,9 +246,60 @@ describe("drafts", () => {
   it("no probe data: logs a reason instead of running silently", async () => {
     const ledger = tempLedger();
     const run = ledger.startRun("drafts", DATE);
-    const s = await generateDrafts(testConfig(), ledger, run, { fetch: fakeFetch({}).fn, drafter: fakeDrafter(() => "x").drafter });
+    const s = await generateDrafts(testConfig(), ledger, run, { social: false, fetch: fakeFetch({}).fn, drafter: fakeDrafter(() => "x").drafter });
     expect(s.drafted).toHaveLength(0);
     run.finish();
     expect(notes(ledger, run.id)[0].reason).toMatch(/no third-party citations/);
+  });
+});
+
+describe("social outreach", () => {
+  const NOW2 = new Date("2026-11-15T12:00:00Z");
+  it("drafts replies to real X/Bluesky/LinkedIn/HN posts, with the disclosure and platform limits", async () => {
+    const config = testConfig({ outreach: { disclosure: "Full disclosure, I run Synta.io", socialSearch: true, maxQueries: 1 } });
+    const ledger = tempLedger();
+    const run = ledger.startRun("drafts", "2026-11-15");
+    const hn = { hits: [{ objectID: "123", title: "Keeping n8n reliable in prod?", created_at: "2026-11-10T00:00:00Z" }] };
+    const fetchFake = (async (url: string) => {
+      if (String(url).includes("hn.algolia.com")) return new Response(JSON.stringify(hn));
+      return new Response("blocked", { status: 403 });
+    }) as typeof fetch;
+    const webSearch = async () => [
+      { url: "https://x.com/someone/status/1890000000000000001", title: "how do you stop n8n failing silently?", snippet: "", pageAge: "2 days ago" },
+      { url: "https://www.linkedin.com/posts/jane_n8n-reliability-activity-123", title: "n8n in production", snippet: "" },
+      { url: "https://x.com/someone", title: "profile, not a post", snippet: "" },
+      { url: "https://x.com/old/status/1", title: "ancient", snippet: "", pageAge: "2 years ago" },
+    ];
+    const reqs: string[] = [];
+    const drafter = async (req: { system: string; prompt: string }) => {
+      reqs.push(req.system);
+      return req.system.includes("X post") ? "Add an Error Trigger workflow and alert on it. Synta can watch it too." : "Use Retry On Fail plus an error workflow.";
+    };
+    const s = await generateDrafts(config, ledger, run, { social: { fetch: fetchFake, webSearch }, drafter, now: NOW2 });
+    const urls = s.drafted.map((d) => d.targetUrl);
+    expect(urls).toContain("https://x.com/someone/status/1890000000000000001");
+    expect(urls).toContain("https://www.linkedin.com/posts/jane_n8n-reliability-activity-123");
+    expect(urls).toContain("https://news.ycombinator.com/item?id=123");
+    expect(urls).not.toContain("https://x.com/someone");
+    expect(urls.some((u) => u.includes("/old/"))).toBe(false);
+    const x = s.drafted.find((d) => d.targetUrl.includes("x.com"))!;
+    expect(x.body).toContain("Full disclosure, I run Synta.io.");
+    expect(x.body.length).toBeLessThanOrEqual(270);
+    expect(x.meta.platform).toBe("x");
+    expect(reqs.some((r) => r.includes("At most 270 characters"))).toBe(true);
+  });
+
+  it("holds an X reply that is still over the limit after one rewrite", async () => {
+    const config = testConfig({ outreach: { socialSearch: true, maxQueries: 1 } });
+    const ledger = tempLedger();
+    const run = ledger.startRun("drafts", "2026-11-15");
+    const webSearch = async () => [{ url: "https://x.com/a/status/42", title: "q", snippet: "" }];
+    const s = await generateDrafts(config, ledger, run, {
+      social: { fetch: (async () => new Response("", { status: 403 })) as typeof fetch, webSearch },
+      drafter: async () => "word ".repeat(80),
+      now: NOW2,
+    });
+    expect(s.drafted).toHaveLength(0);
+    expect(s.held[0].reason).toMatch(/too long/);
   });
 });
