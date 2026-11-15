@@ -43,6 +43,8 @@ export interface SanityPort {
   getDocument(id: string): Promise<SanityDoc | null>;
   listPosts(type: string, f: FieldMap): Promise<ExistingPost[]>;
   latestAuthorRef(type: string, authorField: string): Promise<string | null>;
+  /** Documents of a type (e.g. categories) as id + title, for picking references. Optional for fakes. */
+  listTitles?(type: string): Promise<{ id: string; title: string; posts?: number }[]>;
   createOrReplace(doc: SanityDoc): Promise<void>;
   patchSet(id: string, set: Record<string, unknown>): Promise<void>;
   /** Copy the published doc to `drafts.<id>` and delete the published one (revert of a new post). */
@@ -124,6 +126,13 @@ export function sanityClient(
         );
         return rows.map((r) => ({ id: r._id, slug: r.slug, title: r.title ?? "", text: [r.title, r.excerpt, ptToText(r.body)].join("\n") }));
       }),
+    listTitles: (type) =>
+      wrap("listTitles", () =>
+        client.fetch<{ id: string; title: string; posts: number }[]>(
+          `*[_type == $type && !(_id in path("drafts.**"))]{"id": _id, "title": coalesce(title, name, _id), "posts": count(*[_type == "post" && references(^._id) && !(_id in path("drafts.**"))])} | order(posts desc)`,
+          { type },
+        ),
+      ),
     latestAuthorRef: (type, authorField) =>
       wrap("latestAuthorRef", () =>
         client.fetch<string | null>(

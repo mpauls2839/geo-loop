@@ -24,6 +24,19 @@ export function register(program: Command, ctx: () => Promise<Ctx>) {
     });
 
   page
+    .command("categories")
+    .description("list categories (id, title, post count): a new post needs one as content.categoryRef")
+    .option("--type <type>", "category document type", "category")
+    .action(async (o: { type: string }) => {
+      const c = await ctx();
+      const sanity = makeSanityFor(c.config)(sanityDataset(c.config, false));
+      if (!sanity?.listTitles) throw new Error("no sanity block in config");
+      const rows = await sanity.listTitles(o.type);
+      if (c.json) console.log(JSON.stringify(rows, null, 2));
+      else for (const r of rows) console.log(`${r.id.padEnd(40)} ${String(r.posts ?? "").padStart(4)} posts  ${r.title}`);
+    });
+
+  page
     .command("get <slug>")
     .description("print a post as JSON with its body in Markdown (images kept as ![alt](pt:<key>) placeholders)")
     .option("--test-dataset", "read the test dataset")

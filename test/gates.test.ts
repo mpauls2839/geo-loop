@@ -5,7 +5,7 @@ import {
 } from "../src/lib/gates.ts";
 import { testConfig } from "./helpers.ts";
 
-const caps = testConfig().caps;
+const caps = testConfig({ caps: { newPosts: 1, refreshes: 2, codePrs: 1, offsiteDrafts: 5 } }).caps;
 
 describe("banned phrases (invariant 4, 5.4)", () => {
   it("fails case-insensitively and across whitespace", () => {

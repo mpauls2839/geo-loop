@@ -82,12 +82,13 @@ export const ConfigSchema = z.object({
     .default({ samples: 3, budgetUsd: 5, maxRetries: 2 }),
   caps: z
     .object({
-      newPosts: z.number().int().min(0).default(1),
-      refreshes: z.number().int().min(0).default(2),
+      // Per run (the loop runs weekly by default).
+      newPosts: z.number().int().min(0).default(2),
+      refreshes: z.number().int().min(0).default(4),
       codePrs: z.number().int().min(0).default(1),
-      offsiteDrafts: z.number().int().min(0).default(5),
+      offsiteDrafts: z.number().int().min(0).default(10),
     })
-    .default({ newPosts: 1, refreshes: 2, codePrs: 1, offsiteDrafts: 5 }),
+    .default({ newPosts: 2, refreshes: 4, codePrs: 1, offsiteDrafts: 10 }),
   gates: z
     .object({
       refreshDeltaPts: z.number().default(20),

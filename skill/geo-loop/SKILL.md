@@ -35,11 +35,11 @@ geo-loop map --json > /tmp/map.json
 - Exit 1: stop, run `geo-loop report`, commit, and report the failure.
 - If two or more engines failed, **ship nothing today** (drafts and report still run).
 
-## 2. Plan (at most the daily caps)
+## 2. Plan (up to the per-run caps in `caps`)
 
-Candidates, in priority order:
+Fill **both** content lanes every run, up to `caps.refreshes` and `caps.newPosts`:
 1. **Refreshes** of existing posts that target a probe question where engines cite other pages and not ours. `geo-loop page list` lists posts; match questions to the closest existing post by topic. Skip any page changed in the last `gates.cooldownDays` (ship will refuse it anyway).
-2. **New posts** only for a question with no reasonably matching post. Hold this lane if the config has no category reference for new posts.
+2. **New posts** for questions no existing post really answers. Look hardest at explore questions from Search Console (real queries with impressions) and engine searches, exact error messages, and comparisons. Before drafting, check `geo-loop page list` so you don't duplicate a post (ship also refuses near-duplicates). Pick a category from `geo-loop page categories` (use its id as `content.categoryRef`; prefer the category most similar posts use).
 3. **Code PRs** (llms.txt, JSON-LD, sitemap) only for files in `github.allowlist`, and only when `GITHUB_TOKEN` is set.
 
 For each candidate, write down: target, target question ids, the technique(s) you'll apply, and why (citing probe/map data). Try at most `gates.maxUntestedTechniquesPerDay` technique you have not used before.
@@ -86,6 +86,12 @@ geo-loop eval --page <slug> --draft /tmp/<slug>.draft.md --questions <ids> --jso
    It refuses a job with missing answers, and fails a call if the prompts no longer match.
 
 Only a `decision.verdict` of `pass` may ship. A fail is a normal outcome: note the reason and move on.
+
+### New posts: drafting and eval
+- Write a complete post in Markdown at `/tmp/<slug>.draft.md`: answer first, H2 sections, an FAQ phrased like the target questions, sourced facts only, the positioning line's spirit, and a natural link to the site (the CTA gate needs one).
+- `slug`: short, kebab-case, matching the main query (check it isn't taken with `geo-loop page get <slug>`).
+- Eval it like a refresh (`--page <slug>`): there is no live page yet, so it is judged as a new post and must reach `gates.newPostMinWinRate` against the pages engines cite today.
+- change.json for a new post: `{"lane": "new_post", "target": "<slug>", "mainQuery": "<the main buyer question>", "questionIds": [...], "techniques": [...], "sources": [...], "eval": <eval --json output>, "content": {"title": "...", "slug": "<slug>", "excerpt": "<50-160 chars>", "body": "<markdown>", "categoryRef": "<category id>"}}`
 
 ## 5. Ship
 

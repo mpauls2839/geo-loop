@@ -297,8 +297,8 @@ describe("ship: Sanity refresh", () => {
     expect(r.reasons.join()).toMatch(/14-day measurement window/);
   });
 
-  it("6.4 third refresh in a day is queued for tomorrow", async () => {
-    const t = setup();
+  it("6.4 a refresh over the per-run cap is queued for the next run", async () => {
+    const t = setup({ caps: { newPosts: 1, refreshes: 2, codePrs: 1, offsiteDrafts: 5 } });
     for (const s of ["a", "b", "c"]) t.sanity.put(livePost(s));
     expect((await shipChange(refresh("a"), t.deps())).status).toBe("shipped");
     expect((await shipChange(refresh("b"), t.deps())).status).toBe("shipped");
