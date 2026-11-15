@@ -71,3 +71,12 @@ describe("dashboard history", () => {
     expect(readFileSync(join(out, "history/2026-11-22.html"), "utf8")).toContain('href="2026-11-15.html"');
   });
 });
+
+describe("Sanity Studio links", () => {
+  it("accepts the Studio URL as copied from the browser", async () => {
+    const { studioDocUrl } = await import("../src/commands/dashboard.ts");
+    expect(studioDocUrl("https://www.sanity.io/@oveIPrYuY/studio/llj7vj8okuwffix9we3k4dqj/default/structure", "drafts.e894c8f4", "post"))
+      .toBe("https://www.sanity.io/@oveIPrYuY/studio/llj7vj8okuwffix9we3k4dqj/default/intent/edit/id=e894c8f4;type=post/");
+    expect(studioDocUrl("https://acme.sanity.studio/", "abc", "post")).toBe("https://acme.sanity.studio/intent/edit/id=abc;type=post/");
+  });
+});

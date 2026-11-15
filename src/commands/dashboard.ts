@@ -111,6 +111,15 @@ export function readProposals(dir: string): Proposal[] {
   return out.sort((a, b) => rank[a.status] - rank[b.status]);
 }
 
+/**
+ * Deep link to a document in Sanity Studio. Accepts the Studio address as copied from the browser,
+ * e.g. https://www.sanity.io/@org/studio/<appId>/default/structure, and uses Sanity's intent route.
+ */
+export function studioDocUrl(studioUrl: string, docId: string, type: string): string {
+  const base = studioUrl.replace(/[?#].*$/, "").replace(/\/+$/, "").replace(/\/(structure|desk)(\/.*)?$/, "");
+  return `${base}/intent/edit/id=${encodeURIComponent(docId.replace(/^drafts\./, ""))};type=${encodeURIComponent(type)}/`;
+}
+
 /** Say what the change does: update an existing post, publish a new one, or open a code PR. */
 function badgeText(p: Proposal, dry: boolean): string {
   if (p.status === "held") return "■ HELD";
@@ -204,7 +213,7 @@ export function buildDashboard(config: Config, ledger: Ledger, opts: DashboardOp
     if (ref.prUrl) p.prLink = ref.prUrl;
     if (lane !== "code_pr") p.link = base + p.target;
     if (config.sanity?.studioUrl && p.docId) {
-      p.studioLink = `${config.sanity.studioUrl.replace(/\/$/, "")}/intent/edit/id=${encodeURIComponent(p.docId.replace(/^drafts\./, ""))};type=${encodeURIComponent(config.sanity.postType)}/`;
+      p.studioLink = studioDocUrl(config.sanity.studioUrl, p.docId, config.sanity.postType);
     }
     const before = opts.befores?.[p.target];
     if (lane === "refresh" && before && p.bodyMd) p.summary = summarizeChange(before, { title: p.title, excerpt: p.excerpt, md: p.bodyMd });
@@ -446,9 +455,7 @@ export function writeDashboard(config: Config, ledger: Ledger, outDir?: string, 
   mkdirSync(changesDir, { recursive: true });
   for (const p of proposals) {
     if (!p.bodyMd && !p.files?.length) continue;
-    const docLink = config.sanity?.studioUrl && p.docId
-      ? `${config.sanity.studioUrl.replace(/\/$/, "")}/intent/edit/id=${encodeURIComponent(p.docId.replace(/^drafts\./, ""))};type=${encodeURIComponent(config.sanity.postType)}/`
-      : undefined;
+    const docLink = config.sanity?.studioUrl && p.docId ? studioDocUrl(config.sanity.studioUrl, p.docId, config.sanity.postType) : undefined;
     const row = ledger.db.prepare("SELECT external_ref FROM changes WHERE id = ?").get(p.changeId ?? "") as { external_ref: string | null } | undefined;
     const ref = row?.external_ref ? (JSON.parse(row.external_ref) as { prUrl?: string }) : {};
     writeFileSync(join(changesDir, `${p.id}.html`), buildChangePage(config, { ...p, studioLink: docLink, prLink: ref.prUrl }, opts.befores?.[p.target], date, opts.env));
