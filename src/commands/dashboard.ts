@@ -265,6 +265,7 @@ td.heat.na{background:transparent;color:var(--muted)}
 .run.ok{border-color:color-mix(in srgb,var(--good) 50%,var(--line))}.run.partial{border-color:color-mix(in srgb,var(--warn) 60%,var(--line))}.run.failed{border-color:var(--bad)}
 .card h3 a,.card h3 a:visited{color:inherit;text-decoration:none;border-bottom:1.5px solid color-mix(in srgb,var(--accent) 55%,transparent)}.card h3 a:hover{color:var(--accent)}
 .chip.plat-x{background:#111;color:#fff}.chip.plat-linkedin{background:#0a66c2;color:#fff}.chip.plat-bluesky{background:#1185fe;color:#fff}.chip.plat-reddit{background:#ff4500;color:#fff}.chip.plat-hn{background:#ff6600;color:#fff}.chip.plat-threads{background:#000;color:#fff}
+.hist{margin:-8px 0 14px;color:var(--muted);font-size:13px}.hist a{color:var(--accent)}
 .muted{color:var(--muted)}footer{color:var(--muted);font-size:12px;text-align:center;margin-top:24px}
 @media (max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.loop{grid-template-columns:repeat(4,1fr)}.step:nth-child(4)::after{display:none}.grid2{grid-template-columns:1fr}}
 @media (max-width:520px){.kpis{grid-template-columns:1fr}.loop{grid-template-columns:repeat(2,1fr)}.step:nth-child(2n)::after{display:none}.row{grid-template-columns:110px 1fr 56px}}
@@ -341,10 +342,23 @@ ${p.rows.map((r) => `<div class="qid">${esc(qById.get(r.q)?.text ?? r.q)}</div>
   return redact(html, opts.env ?? process.env);
 }
 
+/**
+ * Writes report/dashboard.html (always the latest) and report/history/<date>.html (one per run date,
+ * kept forever), each linking to the other dates.
+ */
 export function writeDashboard(config: Config, ledger: Ledger, outDir?: string, opts: Parameters<typeof buildDashboard>[2] = {}): string {
   const dir = resolve(outDir ?? resolve(config.dataDir, "report"));
-  mkdirSync(dir, { recursive: true });
+  const histDir = join(dir, "history");
+  mkdirSync(histDir, { recursive: true });
+  const date =
+    opts.date ?? ((ledger.db.prepare("SELECT MAX(date) AS d FROM probe_answers WHERE error IS NULL").get() as { d: string | null }).d ?? "undated");
+  const dates = [...new Set([...readdirSync(histDir).filter((f) => /^\d{4}-\d{2}-\d{2}\.html$/.test(f)).map((f) => f.slice(0, 10)), date])].sort().reverse();
+  const nav = (prefix: string) =>
+    `<nav class="hist">Runs: ${dates.map((d) => (d === date ? `<b>${esc(d)}</b>` : `<a href="${prefix}${esc(d)}.html">${esc(d)}</a>`)).join(" · ")}</nav>`;
+  const html = buildDashboard(config, ledger, { ...opts, date });
+  const inject = (prefix: string) => html.replace("</header>", `</header>${nav(prefix)}`);
+  writeFileSync(join(histDir, `${date}.html`), inject(""));
   const file = join(dir, "dashboard.html");
-  writeFileSync(file, buildDashboard(config, ledger, opts));
+  writeFileSync(file, inject("history/"));
   return file;
 }

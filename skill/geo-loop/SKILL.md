@@ -113,7 +113,7 @@ If `shipMode` in the config is `"dry_run"`, ship writes nothing and prints the e
 ```bash
 geo-loop drafts      # reply/pitch drafts for a human to post; never post anything yourself
 geo-loop report      # writes <dataDir>/report/index.html (detailed log)
-geo-loop dashboard   # writes <dataDir>/report/dashboard.html (the visual one-page summary)
+geo-loop dashboard   # writes <dataDir>/report/dashboard.html (latest) and report/history/<date>.html (kept per run)
 ```
 
 ## 7. Persist
@@ -124,7 +124,7 @@ If pushing to the default branch is refused, push to the branch `geo-loop/state`
 
 ## 8. Final message
 
-Three to six lines: run status, ship mode (live or dry run), citation share per engine vs the previous run, what shipped (change ids + `geo-loop revert <id>`), what was held and why, and drafts waiting for a human. If nothing shipped, say why.
+Three to six lines: run status, ship mode (live or dry run), the dashboard path (`<dataDir>/report/history/<date>.html`), citation share per engine vs the previous run, what shipped (change ids + `geo-loop revert <id>`), what was held and why, and drafts waiting for a human. If nothing shipped, say why.
 
 ## Steer (end of every weekly run)
 

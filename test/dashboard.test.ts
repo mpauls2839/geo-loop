@@ -47,3 +47,21 @@ describe("dashboard", () => {
     expect(html).toContain("Update to an existing live post");
   });
 });
+
+describe("dashboard history", () => {
+  it("keeps one dated copy per run and links between them; latest is overwritten", async () => {
+    const { writeDashboard } = await import("../src/commands/dashboard.ts");
+    const { readFileSync, existsSync } = await import("node:fs");
+    const config = testConfig();
+    const ledger = tempLedger();
+    const out = mkdtempSync(join(tmpdir(), "dash-"));
+    writeDashboard(config, ledger, out, { date: "2026-11-15" });
+    writeDashboard(config, ledger, out, { date: "2026-11-22" });
+    expect(existsSync(join(out, "history/2026-11-15.html"))).toBe(true);
+    expect(existsSync(join(out, "history/2026-11-22.html"))).toBe(true);
+    const latest = readFileSync(join(out, "dashboard.html"), "utf8");
+    expect(latest).toContain("2026-11-22");
+    expect(latest).toContain('href="history/2026-11-15.html"');
+    expect(readFileSync(join(out, "history/2026-11-22.html"), "utf8")).toContain('href="2026-11-15.html"');
+  });
+});
