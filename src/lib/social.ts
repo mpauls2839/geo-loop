@@ -222,7 +222,10 @@ export async function findSocialPosts(
 
   // Keep only specific posts, recent enough, not the brand's own; dedupe by URL.
   const seen = new Set<string>();
+  // Recurring HN hiring threads match every keyword and are never outreach targets.
+  const NOISE = /\b(who is hiring|who wants to be hired|freelancer\? seeking freelancer)\b/i;
   const fresh = found.filter((p) => {
+    if (NOISE.test(p.title)) return false;
     const key = p.url.replace(/[?#].*$/, "").replace(/\/$/, "").toLowerCase();
     if (seen.has(key) || !socialPlatform(p.url)) return false;
     seen.add(key);
