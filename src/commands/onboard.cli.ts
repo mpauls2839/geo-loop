@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Command } from "commander";
 import { loadConfig } from "../config.js";
+import { signInGsc } from "./gscauth.js";
 import { readQuestionsFile, topicFor, writeQuestionsFile } from "./questions.js";
 import { checkKeys, KEYS, mask, parseEnv, protectEnv, renderEnv, writeEnvFile, type Check, type KeySpec } from "./onboard.js";
 
@@ -87,17 +88,19 @@ export function register(program: Command) {
             return;
           }
           if (!loaded && !only) await maybeCreateConfig(dir);
-          const qMode = only ? null : await chooseQuestionMode(dir, loaded?.config.questionsFile ?? "questions.json");
+          const qMode = only ? null : await chooseQuestionMode(dir, loaded?.config.questionsFile ?? "questions.json", loaded?.config.questions.length ?? 0);
           console.log("\nPaste each key at its prompt. Input is hidden. Enter keeps the current value; type - to clear it.");
           for (const group of ["engines", "shipping", "measurement"] as const) {
-            const groupSpecs = specs.filter((k) => k.group === group);
+            // The refresh token comes from the browser sign-in below, never from typing.
+            const groupSpecs = specs.filter((k) => k.group === group && k.name !== "GSC_OAUTH_REFRESH_TOKEN");
             if (!groupSpecs.length) continue;
             console.log(`\n== ${GROUP_TITLES[group]} ==`);
             // Data-driven questions need Search Console, so offer exactly those keys even if measurement is skipped.
             const wantsGsc = group === "measurement" && (qMode === "data" || qMode === "hybrid");
             if (!only && group !== "engines") {
-              const yes = await ask(`Set up ${group} keys now? (y/N) `, false);
-              if (!/^y/i.test(yes)) {
+              const saved = groupSpecs.filter((k) => values.get(k.name)).length;
+              const yes = await ask(saved ? `Review ${group} keys (${saved} saved)? (Y/n) ` : `Set up ${group} keys now? (y/N) `, false);
+              if (saved ? /^n/i.test(yes) : !/^y/i.test(yes)) {
                 if (!wantsGsc) continue;
                 console.log("  Your questions come from search data, so set up Search Console (Enter skips any of these):");
                 for (const k of groupSpecs.filter((x) => x.name.startsWith("GSC_"))) await promptKey(k, values);
@@ -109,6 +112,16 @@ export function register(program: Command) {
         }
         writeEnvFile(envPath, renderEnv(original, values));
         console.log(`\nSaved ${envPath} (permissions 600, gitignored). Values were not printed.`);
+
+        if (!o.fromEnv && process.stdin.isTTY && values.get("GSC_OAUTH_CLIENT_ID") && values.get("GSC_OAUTH_CLIENT_SECRET")) {
+          const signedIn = !!values.get("GSC_OAUTH_REFRESH_TOKEN");
+          const yes = await ask(signedIn ? "\nSign in to Google Search Console again? (y/N) " : "\nSign in to Google Search Console in your browser now? (Y/n) ", false);
+          if (signedIn ? /^y/i.test(yes) : !/^n/i.test(yes)) {
+            const res = await signInGsc(values);
+            writeEnvFile(envPath, renderEnv(readFileSync(envPath, "utf8"), values));
+            console.log(res.ok ? `  ${res.message}` : `  Search Console: ${res.message}`);
+          }
+        }
       }
 
       const checks = await checkKeys(values, { ...cfg, gscSiteUrl: loaded?.config.discovery.gscSiteUrl });
@@ -126,7 +139,11 @@ export function register(program: Command) {
 async function promptKey(k: KeySpec, values: Map<string, string>) {
   console.log(`\n${k.name}  [${k.secret ? mask(values.get(k.name)) : values.get(k.name) || "not set"}]`);
   console.log(`  ${k.help}`);
-  const label = k.default && !values.get(k.name) ? `  value (default ${k.default}): ` : "  value: ";
+  const label = values.get(k.name)
+    ? "  value (Enter keeps the saved one): "
+    : k.default
+      ? `  value (default ${k.default}): `
+      : "  value: ";
   const v = await ask(label, k.secret);
   if (v === "-") values.set(k.name, "");
   else if (v) values.set(k.name, v);
@@ -160,7 +177,7 @@ export default {
  * Where do the buyer questions come from? Writes the choice to questions.json (never overwrites an
  * existing core list). Your own list is always an option, and replaces data-driven questions entirely.
  */
-async function chooseQuestionMode(dir: string, fileName: string): Promise<"user" | "data" | "hybrid"> {
+async function chooseQuestionMode(dir: string, fileName: string, existingQuestions = 0): Promise<"user" | "data" | "hybrid"> {
   const file = resolve(dir, fileName);
   const current = readQuestionsFile(file);
   console.log(`\n== Buyer questions (what the probe asks AI engines) ==`);
@@ -168,10 +185,11 @@ async function chooseQuestionMode(dir: string, fileName: string): Promise<"user"
   console.log("              Google autocomplete for your category, and forum threads engines cite");
   console.log("  2) user   - use only my own list");
   console.log("  3) hybrid - my own core list, plus data-driven questions that rotate weekly");
-  const pick = await ask(`Choose 1, 2 or 3 [current: ${current.mode}] `, false);
+  const pick = await ask(`Choose 1, 2 or 3 (Enter keeps ${current.mode}) `, false);
   const mode = ({ "1": "data", "2": "user", "3": "hybrid" } as const)[pick.trim() as "1" | "2" | "3"] ?? current.mode;
   const next = { ...current, mode };
-  if ((mode === "user" || mode === "hybrid") && next.core.length === 0) {
+  // Only ask for questions when there are none anywhere yet (config `questions` or questions.json core).
+  if ((mode === "user" || mode === "hybrid") && next.core.length === 0 && existingQuestions === 0) {
     console.log("  Paste your questions, one per line. Empty line to finish (you can also edit " + fileName + " later).");
     for (let i = 1; ; i++) {
       const line = await ask("  > ", false);
@@ -179,7 +197,7 @@ async function chooseQuestionMode(dir: string, fileName: string): Promise<"user"
       next.core.push({ id: `u${i}`, text: line, topic: topicFor(line), source: "seed" });
     }
   }
-  if (mode !== "user") {
+  if (mode !== "user" && !(next.seedTerms?.length)) {
     const terms = await ask("  Category terms for autocomplete, comma-separated (e.g. n8n, workflow automation): ", false);
     if (terms) next.seedTerms = terms.split(",").map((t) => t.trim()).filter(Boolean);
   }
