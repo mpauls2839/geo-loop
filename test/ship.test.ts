@@ -524,3 +524,17 @@ describe("ogimage", () => {
     expect(a.readUInt32BE(20)).toBe(630);
   });
 });
+
+describe("eval output compatibility", () => {
+  it("accepts raw `geo-loop eval --json` output as change.eval", async () => {
+    const { ChangeSchema } = await import("../src/commands/ship.ts");
+    const parsed = ChangeSchema.parse({
+      lane: "refresh",
+      target: "x",
+      content: { body: "## Hi\n\ntext" },
+      eval: { url: "https://synta.io/blog/x", mode: "refresh", rows: [], decision: { kind: "refresh", verdict: "pass", reason: "avg delta +25", avgDeltaPts: 25 } },
+    });
+    expect(parsed.eval.decision).toBe("pass");
+    expect(parsed.eval.reason).toBe("avg delta +25");
+  });
+});

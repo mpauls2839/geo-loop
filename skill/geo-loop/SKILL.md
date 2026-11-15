@@ -77,7 +77,7 @@ Write `/tmp/<slug>.change.json`:
   "questionIds": ["<ids>"],
   "techniques": ["answer-first", "faq-matching"],
   "sources": [{ "url": "<source url>", "text": "<the excerpt containing any number you used>" }],
-  "eval": { "decision": "pass", "reason": "<from eval>", "...": "copy the eval decision fields" },
+  "eval": "<paste the whole `geo-loop eval --json` output here; ship reads decision.verdict>",
   "content": { "title": "<optional new title>", "excerpt": "<optional new meta description>", "body": "<the draft markdown>" }
 }
 ```

@@ -27,10 +27,23 @@ const Block = z.looseObject({ _type: z.string() });
 // Portable Text, or a Markdown string converted at ship time (see lib/portable.ts).
 const Body = z.union([z.array(Block).min(1), z.string().min(1)]);
 const Source = z.object({ url: z.string(), text: z.string().default("") });
-export const EvalResult = z.looseObject({
-  decision: z.enum(["pass", "fail"]),
-  reason: z.string().optional(),
-});
+// Accepts either {decision: "pass"|"fail", ...} or the raw `geo-loop eval --json` output,
+// whose decision is an object {kind, verdict, reason, ...}.
+export const EvalResult = z.preprocess(
+  (v) => {
+    if (!v || typeof v !== "object") return v;
+    const e = v as Record<string, unknown>;
+    const d = e.decision as Record<string, unknown> | undefined;
+    if (d && typeof d === "object" && typeof d.verdict === "string") {
+      return { ...e, ...d, decision: d.verdict, reason: e.reason ?? d.reason };
+    }
+    return v;
+  },
+  z.looseObject({
+    decision: z.enum(["pass", "fail"]),
+    reason: z.string().optional(),
+  }),
+);
 
 const common = {
   id: z.string().regex(/^[A-Za-z0-9._-]{1,100}$/, "id: letters, digits, . _ - only").optional(),
