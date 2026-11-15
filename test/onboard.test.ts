@@ -56,3 +56,22 @@ describe("onboard env handling", () => {
     expect(r.find((c) => c.name === "GITHUB_TOKEN")?.status).toBe("invalid");
   });
 });
+
+describe("Sanity Studio URL", () => {
+  it("is checked as an https URL, and the config loader picks it up from the environment", async () => {
+    const ok = await checkKeys(new Map([["SANITY_STUDIO_URL", "https://www.sanity.io/@o/studio/x/default/structure"], ["AI_GATEWAY_API_KEY", ""]]), { fetchImpl: (async () => new Response("{}")) as typeof fetch });
+    expect(ok.find((c) => c.name === "SANITY_STUDIO_URL")?.status).toBe("ok");
+    const bad = await checkKeys(new Map([["SANITY_STUDIO_URL", "studio"]]), { fetchImpl: (async () => new Response("{}")) as typeof fetch });
+    expect(bad.find((c) => c.name === "SANITY_STUDIO_URL")?.status).toBe("invalid");
+
+    const { loadConfig } = await import("../src/config.ts");
+    const dir = mkdtempSync(join(tmpdir(), "studio-"));
+    writeFileSync(join(dir, "geo-loop.config.json"), JSON.stringify({ brand: { name: "A", domain: "a.dev" }, site: { baseUrl: "https://a.dev" }, questions: [{ id: "q", text: "x y z" }], sanity: { projectId: "p" } }));
+    process.env.SANITY_STUDIO_URL = "https://a.sanity.studio";
+    try {
+      expect((await loadConfig(undefined, dir)).config.sanity?.studioUrl).toBe("https://a.sanity.studio");
+    } finally {
+      delete process.env.SANITY_STUDIO_URL;
+    }
+  });
+});

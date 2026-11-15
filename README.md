@@ -76,6 +76,8 @@ The mock eval asks a judge model "which of these anonymized pages would you cite
 
 `external` lets an agent host judge with its own model, but the agent that wrote a draft must never judge it: the skill hands each question to a fresh sub-agent that sees only the anonymized prompts.
 
+Optional: `SANITY_STUDIO_URL` (your Studio address, as copied from the browser) makes every dashboard change link straight into Sanity Studio.
+
 Shipping needs `SANITY_WRITE_TOKEN` (Sanity CMS lane) and `GITHUB_TOKEN` (code-PR lane). Measurement uses Google Search Console and PostHog.
 
 ## Commands

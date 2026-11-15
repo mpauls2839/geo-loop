@@ -25,6 +25,7 @@ export const KEYS: KeySpec[] = [
   { name: "OPENAI_API_KEY", group: "engines", secret: true, help: "Optional. OpenAI key for the ChatGPT engine; also the eval judge's key for any OpenAI-compatible endpoint." },
   { name: "OPENAI_BASE_URL", group: "engines", secret: false, help: "Optional. OpenAI-compatible endpoint for the eval judge (OpenRouter, Ollama http://localhost:11434/v1, LM Studio, vLLM). Leave empty for OpenAI." },
   { name: "PERPLEXITY_API_KEY", group: "engines", secret: true, help: "Optional. Direct Perplexity key for the Sonar engine." },
+  { name: "SANITY_STUDIO_URL", group: "shipping", secret: false, help: "Optional. Your Sanity Studio address, copied from the browser while it's open (e.g. https://www.sanity.io/@org/studio/<id>/default/structure or https://<name>.sanity.studio). The dashboard links each change straight into Studio." },
   { name: "SANITY_WRITE_TOKEN", group: "shipping", secret: true, help: "Sanity API token with Editor rights (sanity.io/manage -> project -> API -> Tokens). Needed to ship blog changes." },
   { name: "GITHUB_TOKEN", group: "shipping", secret: true, help: "Fine-grained GitHub token with Contents + Pull requests read/write on your site repo. Needed for the code-PR lane." },
   { name: "POSTHOG_PERSONAL_API_KEY", group: "measurement", secret: true, help: "PostHog personal API key with read access (Settings -> Personal API keys). Used to count AI-referred visits and signups." },
@@ -163,6 +164,21 @@ export async function checkKeys(
 
   if (get("PERPLEXITY_API_KEY"))
     checks.push({ name: "PERPLEXITY_API_KEY", status: "unchecked", detail: "Perplexity has no free check endpoint; the first probe will test it" });
+
+  const studio = get("SANITY_STUDIO_URL");
+  if (studio) {
+    let ok = false;
+    try {
+      ok = new URL(studio).protocol === "https:";
+    } catch {
+      ok = false;
+    }
+    checks.push(
+      ok
+        ? { name: "SANITY_STUDIO_URL", status: "ok", detail: "Studio links on (opening them needs your Sanity login)" }
+        : { name: "SANITY_STUDIO_URL", status: "invalid", detail: "not an https URL; copy it from the browser while Studio is open" },
+    );
+  }
 
   const sa = get("SANITY_WRITE_TOKEN");
   if (sa)

@@ -116,7 +116,8 @@ export const ConfigSchema = z.object({
       testDataset: z.string().default("geo-loop-test"),
       postType: z.string().default("post"),
       apiVersion: z.string().default("2025-02-19"),
-      // Optional: your Sanity Studio address, so the dashboard can link each change into Studio.
+      // Optional: your Sanity Studio address (as copied from the browser), so the dashboard can link
+      // each change into Studio. Onboard can store it as SANITY_STUDIO_URL in .env instead.
       studioUrl: z.string().url().optional(),
     })
     .optional(),
@@ -170,6 +171,8 @@ export async function loadConfig(
     throw new ConfigError(`Invalid config ${file}:\n${msg}`);
   }
   const config = parsed.data;
+  // Non-secret settings that onboard stores in .env.
+  if (config.sanity && !config.sanity.studioUrl && process.env.SANITY_STUDIO_URL) config.sanity.studioUrl = process.env.SANITY_STUDIO_URL;
   const qfPath = resolve(dirname(file), config.questionsFile);
   let questionsFile: QuestionsFile | null = null;
   if (existsSync(qfPath)) {
