@@ -321,6 +321,12 @@ export async function generateDrafts(config: Config, ledger: Ledger, run: Run, o
       }
       const looksListicle = cls.kind === "article" || /\b(best|top \d+|alternatives?|vs\.?|versus|compared|comparison|review)\b/i.test(page.title ?? "");
       if (!looksListicle) continue; // an ordinary blog post, not a listicle or review
+      // A vendor's own comparison page ("Kestra vs n8n" on kestra.io) won't list a third product.
+      const siteName = (registeredDomain(t.url) ?? "").split(".")[0];
+      if (siteName.length >= 3 && new RegExp(`\\b${siteName.replace(/[^a-z0-9]/gi, "")}\\b`, "i").test(page.title ?? "") && /\b(vs\.?|versus|alternatives?|compare)/i.test(page.title ?? "")) {
+        skip(t.url, `vendor's own comparison page (${siteName})`);
+        continue;
+      }
       if (mentionsBrand(page.text, names) || page.links.some((l) => isBrandUrl(l, config.brand.domain))) {
         skip(t.url, `article already mentions ${config.brand.name}`);
         continue;
