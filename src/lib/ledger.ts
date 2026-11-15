@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -65,7 +66,7 @@ export class Ledger {
   }
 
   startRun(kind: string, date = today()): Run {
-    const id = `${kind}-${date}-${Date.now().toString(36)}`;
+    const id = `${kind}-${date}-${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
     this.db
       .prepare("INSERT INTO runs (id, kind, date, started_at) VALUES (?, ?, ?, ?)")
       .run(id, kind, date, new Date().toISOString());
