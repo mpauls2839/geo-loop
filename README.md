@@ -92,7 +92,8 @@ Shipping needs `SANITY_WRITE_TOKEN` (Sanity CMS lane) and `GITHUB_TOKEN` (code-P
 | `geo-loop ship --change <file> [--dry-run]` | Gate, snapshot, publish, verify live |
 | `geo-loop revert <change-id>` | Restore the snapshot / unpublish / revert PR |
 | `geo-loop drafts` | Off-site reply and pitch drafts from the map |
-| `geo-loop report` | Private static HTML results page |
+| `geo-loop report` | Private static HTML results log |
+| `geo-loop dashboard [--open]` | Visual one-page dashboard: citation share, who AI trusts, what engines searched, every answer, proposed changes with judge scores |
 
 Exit codes: `0` ok, `2` partial (some work held or skipped, with reasons), `1` failed. A run never reports success silently: every held or skipped item has a reason in the ledger.
 

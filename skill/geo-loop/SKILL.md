@@ -112,7 +112,8 @@ If `shipMode` in the config is `"dry_run"`, ship writes nothing and prints the e
 
 ```bash
 geo-loop drafts      # reply/pitch drafts for a human to post; never post anything yourself
-geo-loop report      # writes <dataDir>/report/index.html
+geo-loop report      # writes <dataDir>/report/index.html (detailed log)
+geo-loop dashboard   # writes <dataDir>/report/dashboard.html (the visual one-page summary)
 ```
 
 ## 7. Persist
