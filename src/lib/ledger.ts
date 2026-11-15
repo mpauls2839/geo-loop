@@ -61,7 +61,8 @@ export class Ledger {
   constructor(path: string) {
     mkdirSync(dirname(path), { recursive: true });
     this.db = new DatabaseSync(path);
-    this.db.exec("PRAGMA journal_mode = WAL;");
+    // Rollback journal, not WAL: the .db file alone is always complete, so committing it to git is safe.
+    this.db.exec("PRAGMA journal_mode = DELETE;");
     this.db.exec(SCHEMA);
   }
 
