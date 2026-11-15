@@ -8,6 +8,7 @@ export type ProbeOptions = {
   // Test seam: replaces live engines (fixtures).
   engines?: EngineAdapter[];
   sleep?: (ms: number) => Promise<void>;
+  concurrency?: number;
 };
 
 export type ProbeSummary = {
@@ -51,42 +52,54 @@ export async function probe(config: Config, ledger: Ledger, run: Run, opts: Prob
   let budgetHit = false;
   const failed = new Map<string, string>();
 
-  for (const engine of engines) {
-    if ("error" in engine) {
-      failed.set(engine.id, engine.error);
-      continue;
-    }
-    let consecutiveFailures = 0;
-    for (const q of config.questions) {
-      for (let sample = 1; sample <= config.probe.samples; sample++) {
-        if (spent >= config.probe.budgetUsd) {
-          budgetHit = true;
-          break;
-        }
-        const res = await askWithRetry(engine, q, config.probe.maxRetries, sleep);
-        if ("error" in res) {
-          consecutiveFailures++;
-          insert.run(run.id, date, q.id, engine.id, engine.model, sample, "", "[]", 0, 0, 0, res.error);
-          // An engine that keeps failing is skipped for the rest of the run (spec 2.5).
-          if (consecutiveFailures >= 3) {
-            failed.set(engine.id, res.error);
-            break;
-          }
-          continue;
-        }
-        consecutiveFailures = 0;
-        spent += res.costUsd;
-        run.addCost(res.costUsd);
-        const urls = res.citedUrls.map(normalizeUrl).filter((u): u is string => !!u);
-        const cited = urls.some((u) => isBrandUrl(u, config.brand.domain));
-        insert.run(
-          run.id, date, q.id, engine.id, res.model, sample, res.text, JSON.stringify([...new Set(urls)]),
-          cited ? 1 : 0, mentionsBrand(res.text, names) ? 1 : 0, res.costUsd, null,
-        );
+  // Engines run in parallel; each engine runs up to `concurrency` questions at once.
+  const concurrency = opts.concurrency ?? 4;
+  await Promise.all(
+    engines.map(async (engine) => {
+      if ("error" in engine) {
+        failed.set(engine.id, engine.error);
+        return;
       }
-      if (failed.has(engine.id) || budgetHit) break;
-    }
-  }
+      const tasks = config.questions.flatMap((q) =>
+        Array.from({ length: config.probe.samples }, (_, i) => ({ q, sample: i + 1 })),
+      );
+      let consecutiveFailures = 0;
+      let next = 0;
+      let inflight = 0;
+      let maxCost = 0;
+      const worker = async () => {
+        while (next < tasks.length && !failed.has(engine.id)) {
+          // Reserve the cost of calls already in flight so parallel workers can't overshoot the budget.
+          if (spent + inflight * maxCost >= config.probe.budgetUsd) {
+            budgetHit = true;
+            return;
+          }
+          const { q, sample } = tasks[next++];
+          inflight++;
+          const res = await askWithRetry(engine, q, config.probe.maxRetries, sleep);
+          inflight--;
+          if (!("error" in res)) maxCost = Math.max(maxCost, res.costUsd);
+          if ("error" in res) {
+            consecutiveFailures++;
+            insert.run(run.id, date, q.id, engine.id, engine.model, sample, "", "[]", 0, 0, 0, res.error);
+            // An engine that keeps failing is skipped for the rest of the run (spec 2.5).
+            if (consecutiveFailures >= 3) failed.set(engine.id, res.error);
+            continue;
+          }
+          consecutiveFailures = 0;
+          spent += res.costUsd;
+          run.addCost(res.costUsd);
+          const urls = res.citedUrls.map(normalizeUrl).filter((u): u is string => !!u);
+          const cited = urls.some((u) => isBrandUrl(u, config.brand.domain));
+          insert.run(
+            run.id, date, q.id, engine.id, res.model, sample, res.text, JSON.stringify([...new Set(urls)]),
+            cited ? 1 : 0, mentionsBrand(res.text, names) ? 1 : 0, res.costUsd, null,
+          );
+        }
+      };
+      await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
+    }),
+  );
 
   for (const [id, err] of failed) run.note({ level: "error", item: `engine:${id}`, reason: err });
   if (budgetHit) run.markPartial(`probe stopped at budget $${config.probe.budgetUsd}`);

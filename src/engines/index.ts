@@ -64,17 +64,30 @@ function claudeEngine(model: string, auth: { via: "direct" | "gateway"; key: str
     model,
     via: auth.via,
     async ask(question) {
-      const res = await client.messages.create({
-        model,
-        max_tokens: 4096,
-        system: SYSTEM,
-        tools: [{ type: toolType, name: "web_search", max_uses: 3 } as Anthropic.Messages.ToolUnion],
-        messages: [{ role: "user", content: question }],
-      });
-      if (res.stop_reason === "refusal") throw new Error("claude refused the question");
+      const messages: Anthropic.Messages.MessageParam[] = [{ role: "user", content: question }];
+      const content: Anthropic.Messages.ContentBlock[] = [];
+      // Server-side search loops can pause mid-turn; resend to let Claude finish (bounded).
+      for (let turn = 0; turn < 4; turn++) {
+        const res = await client.messages.stream({
+          model,
+          max_tokens: 16000,
+          system: SYSTEM,
+          tools: [{ type: toolType, name: "web_search", max_uses: 8 } as Anthropic.Messages.ToolUnion],
+          messages,
+        }).finalMessage();
+        if (res.stop_reason === "refusal") throw new Error("claude refused the question");
+        content.push(...res.content);
+        if (res.stop_reason !== "pause_turn") break;
+        messages.push({ role: "assistant", content: res.content });
+      }
+      const searchErrors = content.flatMap((b) =>
+        b.type === "web_search_tool_result" && !Array.isArray(b.content) ? [b.content.error_code] : [],
+      );
+      const searched = content.some((b) => b.type === "web_search_tool_result" && Array.isArray(b.content));
+      if (!searched && searchErrors.length) throw new Error(`web search failed: ${searchErrors.join(", ")}`);
       let text = "";
       const cited: string[] = [];
-      for (const block of res.content) {
+      for (const block of content) {
         if (block.type !== "text") continue;
         text += block.text;
         for (const c of block.citations ?? []) {
