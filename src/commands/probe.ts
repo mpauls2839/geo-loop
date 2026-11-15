@@ -51,6 +51,7 @@ export async function probe(config: Config, ledger: Ledger, run: Run, opts: Prob
     `INSERT OR REPLACE INTO probe_answers (run_id, date, question_id, engine, model, sample, answer, cited_urls, cited, mentioned, cost_usd, error)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
+  const insertQuery = ledger.db.prepare("INSERT OR IGNORE INTO engine_queries (date, question_id, engine, query) VALUES (?, ?, ?, ?)");
   let spent = 0;
   let budgetHit = false;
   const failed = new Map<string, string>();
@@ -108,6 +109,7 @@ export async function probe(config: Config, ledger: Ledger, run: Run, opts: Prob
             run.id, date, q.id, engine.id, res.model, sample, res.text, JSON.stringify([...new Set(urls)]),
             cited ? 1 : 0, mentionsBrand(res.text, names) ? 1 : 0, res.costUsd, null,
           );
+          for (const sq of res.searchQueries ?? []) insertQuery.run(date, q.id, engine.id, sq.trim().toLowerCase());
         }
       };
       await Promise.all(Array.from({ length: Math.max(1, engineCfg?.concurrency ?? concurrency) }, worker));

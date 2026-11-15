@@ -125,3 +125,14 @@ describe("rate limits", () => {
     expect(waits).toEqual([7000, 7000]);
   });
 });
+
+describe("engine search queries", () => {
+  it("stores the searches engines issued, deduped and lowercased", async () => {
+    const config = testConfig({ questions: [{ id: "q1", text: "q", topic: "t" }], engines: [{ id: "claude" }], probe: { samples: 2, budgetUsd: 5, maxRetries: 0 } });
+    const ledger = tempLedger();
+    const engine = fakeEngine("claude", () => ({ ...ans("x", []), searchQueries: ["n8n Error Trigger", "n8n retry on fail"] }));
+    await probe(config, ledger, ledger.startRun("probe", "2026-11-15"), { engines: [engine], sleep: noSleep });
+    const rows = ledger.db.prepare("SELECT query FROM engine_queries ORDER BY query").all() as { query: string }[];
+    expect(rows.map((r) => r.query)).toEqual(["n8n error trigger", "n8n retry on fail"]);
+  });
+});

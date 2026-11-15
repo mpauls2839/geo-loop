@@ -22,6 +22,12 @@ If config check fails, stop and report the error. Read `geo-loop.config.ts` for 
 
 ## 1. Measure
 
+If `questions.json` has `mode` `data` or `hybrid`, refresh the data-driven questions first, so this run probes them:
+```bash
+geo-loop questions suggest --write   # data: fills core once (then frozen), refreshes explore; hybrid: explore only
+```
+Never edit core questions yourself: changing them breaks week-over-week comparison. Mention notable new explore questions in the final message.
+
 ```bash
 geo-loop probe          # exit 0 ok, 2 partial (an engine failed or budget hit), 1 failed
 geo-loop map --json > /tmp/map.json

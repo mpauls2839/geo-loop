@@ -1,13 +1,30 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { z } from "zod";
 
 const Question = z.object({
   id: z.string().min(1),
   text: z.string().min(1),
   topic: z.string().default("general"),
-  source: z.enum(["seed", "persona", "gsc"]).default("seed"),
+  source: z.enum(["seed", "persona", "gsc", "engine", "autocomplete", "thread", "mixed"]).default("seed"),
+  evidence: z.string().optional(),
 });
+
+/**
+ * questions.json (next to the config): where questions come from.
+ * - user: only the questions you write (config `questions` and/or this file's `core`)
+ * - data: `geo-loop questions suggest --write` fills `core` once from real search data (then frozen,
+ *   so weekly trends stay comparable) and refreshes `explore` every run
+ * - hybrid: your `core`, data-driven `explore`
+ */
+export const QuestionsFileSchema = z.object({
+  mode: z.enum(["user", "data", "hybrid"]).default("user"),
+  seedTerms: z.array(z.string()).optional(), // used when config.discovery.seedTerms is empty
+  updatedAt: z.string().optional(),
+  core: z.array(Question).default([]),
+  explore: z.array(Question).default([]),
+});
+export type QuestionsFile = z.infer<typeof QuestionsFileSchema>;
 
 const Engine = z.object({
   id: z.enum(["claude", "chatgpt", "perplexity"]),
@@ -34,7 +51,17 @@ export const ConfigSchema = z.object({
     })
     .default({ bannedPhrases: [] }),
   productFactsFile: z.string().optional(),
-  questions: z.array(Question).min(1, "config needs at least one question"),
+  questions: z.array(Question).default([]),
+  questionsFile: z.string().default("questions.json"),
+  discovery: z
+    .object({
+      seedTerms: z.array(z.string()).default([]), // category terms for autocomplete, e.g. ["n8n"]
+      gscSiteUrl: z.string().optional(), // e.g. "sc-domain:example.com"; GSC_SITE_URL also works
+      coreSize: z.number().int().min(1).default(20),
+      exploreSize: z.number().int().min(0).default(10),
+      sources: z.array(z.enum(["gsc", "engine", "autocomplete", "thread"])).default(["gsc", "engine", "autocomplete", "thread"]),
+    })
+    .default({ seedTerms: [], coreSize: 20, exploreSize: 10, sources: ["gsc", "engine", "autocomplete", "thread"] }),
   competitors: z.record(z.string(), z.array(z.string().url())).default({}),
   engines: z.array(Engine).default([{ id: "claude" }, { id: "chatgpt" }, { id: "perplexity" }] as never),
   judge: z
@@ -116,7 +143,11 @@ export function defineConfig(c: z.input<typeof ConfigSchema>) {
   return c;
 }
 
-export async function loadConfig(path?: string, cwd = process.cwd()): Promise<{ config: Config; path: string }> {
+export async function loadConfig(
+  path?: string,
+  cwd = process.cwd(),
+  opts: { allowNoQuestions?: boolean } = {},
+): Promise<{ config: Config; path: string; questionsFile: QuestionsFile | null }> {
   const file = path ? resolve(cwd, path) : CANDIDATES.map((c) => resolve(cwd, c)).find((p) => existsSync(p));
   if (!file || !existsSync(file)) throw new ConfigError(`No config found. Looked for ${path ?? CANDIDATES.join(", ")} in ${cwd}`);
   const { createJiti } = await import("jiti");
@@ -127,7 +158,21 @@ export async function loadConfig(path?: string, cwd = process.cwd()): Promise<{ 
     const msg = parsed.error.issues.map((i) => `  ${i.path.join(".") || "(root)"}: ${i.message}`).join("\n");
     throw new ConfigError(`Invalid config ${file}:\n${msg}`);
   }
-  return { config: parsed.data, path: file };
+  const config = parsed.data;
+  const qfPath = resolve(dirname(file), config.questionsFile);
+  let questionsFile: QuestionsFile | null = null;
+  if (existsSync(qfPath)) {
+    const q = QuestionsFileSchema.safeParse(JSON.parse(readFileSync(qfPath, "utf8")));
+    if (!q.success) throw new ConfigError(`Invalid ${qfPath}: ${q.error.issues.map((i) => i.path.join(".") + " " + i.message).join("; ")}`);
+    questionsFile = q.data;
+    if (!config.discovery.seedTerms.length && q.data.seedTerms?.length) config.discovery.seedTerms = q.data.seedTerms;
+    const seen = new Set(config.questions.map((x) => x.id));
+    for (const x of [...q.data.core, ...q.data.explore]) if (!seen.has(x.id)) (config.questions.push(x), seen.add(x.id));
+  }
+  if (!config.questions.length && !opts.allowNoQuestions) {
+    throw new ConfigError(`Invalid config ${file}:\n  questions: config needs at least one question (write them in the config or ${config.questionsFile}, or run \`geo-loop questions suggest --write\`)`);
+  }
+  return { config, path: file, questionsFile };
 }
 
 export class ConfigError extends Error {}

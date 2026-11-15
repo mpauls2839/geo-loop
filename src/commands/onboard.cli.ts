@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Command } from "commander";
 import { loadConfig } from "../config.js";
+import { readQuestionsFile, topicFor, writeQuestionsFile } from "./questions.js";
 import { checkKeys, KEYS, mask, parseEnv, protectEnv, renderEnv, writeEnvFile, type Check, type KeySpec } from "./onboard.js";
 
 function ask(prompt: string, hidden: boolean): Promise<string> {
@@ -63,7 +64,7 @@ export function register(program: Command) {
       }
 
       let cfg: { sanityProjectId?: string; githubRepo?: string } = {};
-      const loaded = await loadConfig(program.opts().config).catch(() => null);
+      const loaded = await loadConfig(program.opts().config, process.cwd(), { allowNoQuestions: true }).catch(() => null);
       if (loaded) cfg = { sanityProjectId: loaded.config.sanity?.projectId, githubRepo: loaded.config.github?.repo };
 
       if (!o.check) {
@@ -86,14 +87,22 @@ export function register(program: Command) {
             return;
           }
           if (!loaded && !only) await maybeCreateConfig(dir);
+          const qMode = only ? null : await chooseQuestionMode(dir, loaded?.config.questionsFile ?? "questions.json");
           console.log("\nPaste each key at its prompt. Input is hidden. Enter keeps the current value; type - to clear it.");
           for (const group of ["engines", "shipping", "measurement"] as const) {
             const groupSpecs = specs.filter((k) => k.group === group);
             if (!groupSpecs.length) continue;
             console.log(`\n== ${GROUP_TITLES[group]} ==`);
+            // Data-driven questions need Search Console, so offer exactly those keys even if measurement is skipped.
+            const wantsGsc = group === "measurement" && (qMode === "data" || qMode === "hybrid");
             if (!only && group !== "engines") {
               const yes = await ask(`Set up ${group} keys now? (y/N) `, false);
-              if (!/^y/i.test(yes)) continue;
+              if (!/^y/i.test(yes)) {
+                if (!wantsGsc) continue;
+                console.log("  Your questions come from search data, so set up Search Console (Enter skips any of these):");
+                for (const k of groupSpecs.filter((x) => x.name.startsWith("GSC_"))) await promptKey(k, values);
+                continue;
+              }
             }
             for (const k of groupSpecs) await promptKey(k, values);
           }
@@ -102,7 +111,7 @@ export function register(program: Command) {
         console.log(`\nSaved ${envPath} (permissions 600, gitignored). Values were not printed.`);
       }
 
-      const checks = await checkKeys(values, cfg);
+      const checks = await checkKeys(values, { ...cfg, gscSiteUrl: loaded?.config.discovery.gscSiteUrl });
       printChecks(checks);
       const bad = checks.filter((c) => c.status === "invalid" || c.status === "missing");
       if (bad.length) {
@@ -145,4 +154,37 @@ export default {
 `,
   );
   console.log(`  Wrote ${file}. Edit the questions before your first probe.`);
+}
+
+/**
+ * Where do the buyer questions come from? Writes the choice to questions.json (never overwrites an
+ * existing core list). Your own list is always an option, and replaces data-driven questions entirely.
+ */
+async function chooseQuestionMode(dir: string, fileName: string): Promise<"user" | "data" | "hybrid"> {
+  const file = resolve(dir, fileName);
+  const current = readQuestionsFile(file);
+  console.log(`\n== Buyer questions (what the probe asks AI engines) ==`);
+  console.log("  1) data   - discover them from real search data: Search Console, the searches AI engines run,");
+  console.log("              Google autocomplete for your category, and forum threads engines cite");
+  console.log("  2) user   - use only my own list");
+  console.log("  3) hybrid - my own core list, plus data-driven questions that rotate weekly");
+  const pick = await ask(`Choose 1, 2 or 3 [current: ${current.mode}] `, false);
+  const mode = ({ "1": "data", "2": "user", "3": "hybrid" } as const)[pick.trim() as "1" | "2" | "3"] ?? current.mode;
+  const next = { ...current, mode };
+  if ((mode === "user" || mode === "hybrid") && next.core.length === 0) {
+    console.log("  Paste your questions, one per line. Empty line to finish (you can also edit " + fileName + " later).");
+    for (let i = 1; ; i++) {
+      const line = await ask("  > ", false);
+      if (!line) break;
+      next.core.push({ id: `u${i}`, text: line, topic: topicFor(line), source: "seed" });
+    }
+  }
+  if (mode !== "user") {
+    const terms = await ask("  Category terms for autocomplete, comma-separated (e.g. n8n, workflow automation): ", false);
+    if (terms) next.seedTerms = terms.split(",").map((t) => t.trim()).filter(Boolean);
+  }
+  writeQuestionsFile(file, next);
+  console.log(`  Saved ${fileName} (mode ${mode}${next.core.length ? `, ${next.core.length} core questions` : ""}).`);
+  if (mode !== "user") console.log("  After onboarding: geo-loop questions suggest --write");
+  return mode;
 }

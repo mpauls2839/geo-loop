@@ -3,6 +3,7 @@ import { chmodSync, existsSync, readFileSync, renameSync, writeFileSync } from "
 import { dirname, join, resolve } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
+import { gscQueries, loadServiceAccount } from "../lib/searchdata.js";
 
 // Onboarding: collect keys into a local .env safely.
 // - secrets are read with hidden input and never printed (only "set, ends ...abcd")
@@ -29,6 +30,7 @@ export const KEYS: KeySpec[] = [
   { name: "POSTHOG_PERSONAL_API_KEY", group: "measurement", secret: true, help: "PostHog personal API key with read access (Settings -> Personal API keys). Used to count AI-referred visits and signups." },
   { name: "POSTHOG_PROJECT_ID", group: "measurement", secret: false, help: "PostHog project id (number in the project URL)." },
   { name: "POSTHOG_HOST", group: "measurement", secret: false, help: "PostHog API host.", default: "https://us.posthog.com" },
+  { name: "GSC_SERVICE_ACCOUNT_JSON", group: "measurement", secret: true, help: "For cloud/hosted runs: the service-account key itself instead of a file (base64 is easiest: `base64 -i key.json | pbcopy`)." },
   { name: "GSC_SERVICE_ACCOUNT_FILE", group: "measurement", secret: false, help: "Path to a Google service-account JSON file. Add its client_email as a user in Search Console." },
   { name: "GSC_SITE_URL", group: "measurement", secret: false, help: "Search Console property, e.g. sc-domain:example.com or https://example.com/." },
 ];
@@ -107,7 +109,7 @@ type FetchLike = typeof fetch;
 /** Free, read-only validation calls. Never sends a key anywhere except its own provider. */
 export async function checkKeys(
   env: Map<string, string>,
-  opts: { sanityProjectId?: string; githubRepo?: string; fetchImpl?: FetchLike } = {},
+  opts: { sanityProjectId?: string; githubRepo?: string; gscSiteUrl?: string; fetchImpl?: FetchLike } = {},
 ): Promise<Check[]> {
   const f = opts.fetchImpl ?? fetch;
   const get = (k: string) => env.get(k) || undefined;
@@ -200,18 +202,28 @@ export async function checkKeys(
       return { name: "POSTHOG_PERSONAL_API_KEY", status: "ok", detail: `valid for project ${id}` };
     });
 
-  const gsc = get("GSC_SERVICE_ACCOUNT_FILE");
-  if (gsc) {
-    try {
-      const j = JSON.parse(readFileSync(gsc, "utf8")) as { client_email?: string; private_key?: string };
-      checks.push(
-        j.client_email && j.private_key
-          ? { name: "GSC_SERVICE_ACCOUNT_FILE", status: "ok", detail: `service account ${j.client_email}; add it as a user in Search Console` }
-          : { name: "GSC_SERVICE_ACCOUNT_FILE", status: "invalid", detail: "file is not a service-account key (no client_email/private_key)" },
-      );
-    } catch (err) {
-      checks.push({ name: "GSC_SERVICE_ACCOUNT_FILE", status: "invalid", detail: `cannot read: ${(err as Error).message}` });
-    }
+  if (get("GSC_SERVICE_ACCOUNT_FILE") || get("GSC_SERVICE_ACCOUNT_JSON")) {
+    const name = get("GSC_SERVICE_ACCOUNT_JSON") ? "GSC_SERVICE_ACCOUNT_JSON" : "GSC_SERVICE_ACCOUNT_FILE";
+    await status(name, async () => {
+      let sa: ReturnType<typeof loadServiceAccount>;
+      try {
+        sa = loadServiceAccount({
+          GSC_SERVICE_ACCOUNT_JSON: get("GSC_SERVICE_ACCOUNT_JSON"),
+          GSC_SERVICE_ACCOUNT_FILE: get("GSC_SERVICE_ACCOUNT_FILE"),
+        });
+      } catch (err) {
+        return { name, status: "invalid", detail: (err as Error).message };
+      }
+      if (!sa) return { name, status: "invalid", detail: "not a service-account key" };
+      const site = get("GSC_SITE_URL") ?? opts.gscSiteUrl;
+      if (!site) return { name, status: "unchecked", detail: `service account ${sa.client_email}; set GSC_SITE_URL to check access` };
+      try {
+        const rows = await gscQueries({ siteUrl: site, sa, days: 7, rowLimit: 1, fetchImpl: f });
+        return { name, status: "ok", detail: `can read Search Console for ${site} (${rows.length ? "has data" : "no rows in the last 7 days"})` };
+      } catch (err) {
+        return { name, status: "invalid", detail: (err as Error).message };
+      }
+    });
   }
 
   const hasEngine = ["AI_GATEWAY_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "PERPLEXITY_API_KEY"].some((k) => get(k));

@@ -36,6 +36,25 @@ Each engine uses its provider's own key when present, otherwise a Vercel AI Gate
 | ChatGPT | `OPENAI_API_KEY` | `AI_GATEWAY_API_KEY` |
 | Perplexity | `PERPLEXITY_API_KEY` | `AI_GATEWAY_API_KEY` |
 
+### Where the questions come from
+
+The probe asks AI engines your buyers' questions. `geo-loop onboard` asks which mode you want (stored in `questions.json`):
+
+| Mode | Questions |
+|---|---|
+| `user` | Only your own list (in the config's `questions`, or `questions.json` `core`). Nothing is generated |
+| `data` | Discovered from real search data. The first `questions suggest --write` fills `core`, which then stays frozen so weekly trends are comparable; `explore` refreshes every run |
+| `hybrid` | Your own `core` list, plus data-driven `explore` questions |
+
+`geo-loop questions suggest` ranks candidates from four real sources, merging near-duplicates and keeping the evidence:
+
+| Source | What it is | Needs |
+|---|---|---|
+| `gsc` | Non-brand queries your site already appears for, by impressions | Google Search Console service account (`GSC_SERVICE_ACCOUNT_JSON` or `_FILE`, `GSC_SITE_URL`) |
+| `engine` | The web searches AI engines themselves ran while answering your probe questions | Nothing (recorded by `probe`) |
+| `autocomplete` | Google's public suggestions for your category terms (`seedTerms`) | Nothing (unofficial public endpoint, rate-limited, best effort) |
+| `thread` | Titles of Reddit/forum threads AI engines cite for your topics | Nothing (from the probe's citations) |
+
 ### The eval judge
 
 The mock eval asks a judge model "which of these anonymized pages would you cite?". Pick where it runs with `judge.provider`:
@@ -58,6 +77,7 @@ Shipping needs `SANITY_WRITE_TOKEN` (Sanity CMS lane) and `GITHUB_TOKEN` (code-P
 |---|---|
 | `geo-loop onboard` | Set up config and keys safely (hidden input, `.env` 600 + gitignored, free key checks) |
 | `geo-loop config check` | Validate config and keys |
+| `geo-loop questions list` / `suggest [--write]` | Show the questions, or discover new ones from real search data |
 | `geo-loop probe [--force]` | Ask every engine every question; record citations |
 | `geo-loop map [--by-topic]` | Citation-source map |
 | `geo-loop eval --page <url> [--draft <file>]` | Mock eval: win rate vs currently cited pages (`--prepare` / `--answers` for an external judge) |

@@ -8,7 +8,8 @@ import type { EngineConfig } from "../config.js";
 // Auth: the provider's own key if set, otherwise AI_GATEWAY_API_KEY through Vercel AI Gateway,
 // which exposes the native Anthropic Messages and OpenAI Responses APIs.
 
-export type EngineAnswer = { text: string; citedUrls: string[]; costUsd: number; model: string };
+// searchQueries: the web searches the engine itself issued while answering (real AI-search demand data).
+export type EngineAnswer = { text: string; citedUrls: string[]; costUsd: number; model: string; searchQueries?: string[] };
 export interface EngineAdapter {
   id: EngineConfig["id"];
   model: string;
@@ -103,7 +104,12 @@ function claudeEngine(model: string, auth: { via: "direct" | "gateway"; key: str
         const found = new Set(content.flatMap((b) => (b.type === "web_search_tool_result" && Array.isArray(b.content) ? b.content.map((r) => r.url) : [])));
         for (const m of text.matchAll(/https?:\/\/[^\s)\]>"']+/g)) if (found.has(m[0])) cited.push(m[0]);
       }
-      return { text, citedUrls: dedupe(cited), costUsd: EST_COST.claude, model };
+      const searchQueries = content.flatMap((b) =>
+        b.type === "server_tool_use" && b.name === "web_search" && typeof (b.input as { query?: unknown })?.query === "string"
+          ? [(b.input as { query: string }).query]
+          : [],
+      );
+      return { text, citedUrls: dedupe(cited), costUsd: EST_COST.claude, model, searchQueries: dedupe(searchQueries) };
     },
   };
 }
@@ -129,7 +135,13 @@ function chatgptEngine(model: string, auth: { via: "direct" | "gateway"; key: st
           for (const a of part.annotations ?? []) if (a.type === "url_citation") cited.push(a.url);
         }
       }
-      return { text: res.output_text ?? "", citedUrls: dedupe(cited), costUsd: EST_COST.chatgpt, model };
+      const searchQueries: string[] = [];
+      for (const item of res.output ?? []) {
+        if (item.type !== "web_search_call") continue;
+        const a = item.action as { type?: string; query?: string; queries?: string[] } | undefined;
+        if (a?.type === "search") searchQueries.push(...(a.queries ?? []), ...(a.query ? [a.query] : []));
+      }
+      return { text: res.output_text ?? "", citedUrls: dedupe(cited), costUsd: EST_COST.chatgpt, model, searchQueries: dedupe(searchQueries) };
     },
   };
 }

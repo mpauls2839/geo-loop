@@ -43,7 +43,7 @@ config
   .command("check")
   .description("validate the config and that every enabled engine has a key")
   .action(async () => {
-    const { config: c, path } = await loadConfig(program.opts().config);
+    const { config: c, path } = await loadConfig(program.opts().config, process.cwd(), { allowNoQuestions: true });
     const problems: string[] = [];
     const engines = c.engines.filter((e) => e.enabled).map((e) => {
       const auth = resolveAuth(e.id);
@@ -51,6 +51,7 @@ config
       return { id: e.id, via: auth?.via ?? "missing" };
     });
     const warnings = c.positioning.line ? [] : ["no positioning line configured"];
+    if (!c.questions.length) problems.push(`no questions: write them in the config or ${c.questionsFile}, or run \`geo-loop questions suggest --write --mode data\``);
     out({ json: !!program.opts().json }, { path, domain: c.brand.domain, engines, questions: c.questions.length, caps: c.caps, problems, warnings }, () => {
       console.log(`config  ${path}`);
       console.log(`brand   ${c.brand.name} (${c.brand.domain})`);
@@ -105,7 +106,7 @@ program
 
 // Each command module in src/commands/<name>.cli.ts exports register(program, ctx).
 // Modules are optional so slices can be built independently.
-const MODULES = ["onboard", "page", "eval", "ship", "revert", "drafts", "report", "run", "steer", "research"];
+const MODULES = ["onboard", "questions", "page", "eval", "ship", "revert", "drafts", "report", "run", "steer", "research"];
 for (const m of MODULES) {
   const file = new URL(`./commands/${m}.cli.ts`, import.meta.url);
   if (existsSync(file)) {

@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS probe_answers (
   cost_usd REAL NOT NULL DEFAULT 0, error TEXT,
   UNIQUE(date, question_id, engine, sample)
 );
+CREATE TABLE IF NOT EXISTS engine_queries (
+  date TEXT NOT NULL, question_id TEXT NOT NULL, engine TEXT NOT NULL, query TEXT NOT NULL,
+  UNIQUE(date, question_id, engine, query)
+);
 CREATE TABLE IF NOT EXISTS evals (
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, created_at TEXT NOT NULL,
   subject TEXT NOT NULL, question_id TEXT NOT NULL, k INTEGER NOT NULL,
