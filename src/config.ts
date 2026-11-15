@@ -13,6 +13,8 @@ const Engine = z.object({
   id: z.enum(["claude", "chatgpt", "perplexity"]),
   model: z.string().optional(),
   enabled: z.boolean().default(true),
+  rpm: z.number().positive().optional(), // requests per minute cap (e.g. 5 on a free AI Gateway tier)
+  concurrency: z.number().int().min(1).optional(),
 });
 
 export const ConfigSchema = z.object({

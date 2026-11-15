@@ -61,10 +61,11 @@ program
   .command("probe")
   .description("ask every enabled engine every question (with web search) and record citations")
   .option("--force", "re-run even if today's probe exists")
+  .option("--engine <ids>", "re-probe only these engines (comma-separated), replacing their answers for the date")
   .action(async (o) => {
     const c = await ctx();
     const run = c.ledger.startRun("probe", c.date);
-    const s = await probe(c.config, c.ledger, run, { force: !!o.force });
+    const s = await probe(c.config, c.ledger, run, { force: !!o.force, only: o.engine?.split(",").map((x: string) => x.trim()) });
     const status = s.enginesOk === 0 ? run.finish("failed") : run.finish();
     out(c, { status, ...s }, () => {
       console.log(`probe ${s.date}${s.reused ? " (reused)" : ""}  status ${status}`);

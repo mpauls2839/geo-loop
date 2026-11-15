@@ -9,6 +9,7 @@ export type ProbeOptions = {
   engines?: EngineAdapter[];
   sleep?: (ms: number) => Promise<void>;
   concurrency?: number;
+  only?: string[]; // re-probe just these engine ids
 };
 
 export type ProbeSummary = {
@@ -24,16 +25,18 @@ export type ProbeSummary = {
 
 export async function probe(config: Config, ledger: Ledger, run: Run, opts: ProbeOptions = {}): Promise<ProbeSummary> {
   const date = run.date;
-  const existing = ledger.db.prepare("SELECT COUNT(*) AS n FROM probe_answers WHERE date = ? AND error IS NULL").get(date) as { n: number };
-  if (existing.n > 0 && !opts.force) {
+  const only = opts.only?.length ? opts.only : null;
+  const scope = only ? ` AND engine IN (${only.map(() => "?").join(",")})` : "";
+  const existing = ledger.db.prepare(`SELECT COUNT(*) AS n FROM probe_answers WHERE date = ? AND error IS NULL${scope}`).get(date, ...(only ?? [])) as { n: number };
+  if (existing.n > 0 && !opts.force && !only) {
     run.note({ level: "skipped", item: "probe", reason: `reused today's probe (${existing.n} answers); pass --force to re-run` });
     return summarize(config, ledger, date, true, false);
   }
-  if (opts.force) ledger.db.prepare("DELETE FROM probe_answers WHERE date = ?").run(date);
+  if (opts.force || only) ledger.db.prepare(`DELETE FROM probe_answers WHERE date = ?${scope}`).run(date, ...(only ?? []));
 
-  const enabled = config.engines.filter((e) => e.enabled);
+  const enabled = config.engines.filter((e) => e.enabled && (!only || only.includes(e.id)));
   const engines: (EngineAdapter | { id: EngineConfig["id"]; error: string })[] = opts.engines
-    ? opts.engines
+    ? opts.engines.filter((e) => !only || only.includes(e.id))
     : enabled.map((e) => {
         try {
           return createEngine(e);
@@ -63,6 +66,16 @@ export async function probe(config: Config, ledger: Ledger, run: Run, opts: Prob
       const tasks = config.questions.flatMap((q) =>
         Array.from({ length: config.probe.samples }, (_, i) => ({ q, sample: i + 1 })),
       );
+      const engineCfg = config.engines.find((e) => e.id === engine.id);
+      const interval = engineCfg?.rpm ? 60_000 / engineCfg.rpm : 0;
+      let nextSlot = 0;
+      const pace = async () => {
+        if (!interval) return;
+        const now = Date.now();
+        const at = Math.max(now, nextSlot);
+        nextSlot = at + interval;
+        if (at > now) await sleep(at - now);
+      };
       let consecutiveFailures = 0;
       let next = 0;
       let inflight = 0;
@@ -76,7 +89,7 @@ export async function probe(config: Config, ledger: Ledger, run: Run, opts: Prob
           }
           const { q, sample } = tasks[next++];
           inflight++;
-          const res = await askWithRetry(engine, q, config.probe.maxRetries, sleep);
+          const res = await askWithRetry(engine, q, config.probe.maxRetries, sleep, pace);
           inflight--;
           if (!("error" in res)) maxCost = Math.max(maxCost, res.costUsd);
           if ("error" in res) {
@@ -97,7 +110,7 @@ export async function probe(config: Config, ledger: Ledger, run: Run, opts: Prob
           );
         }
       };
-      await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
+      await Promise.all(Array.from({ length: Math.max(1, engineCfg?.concurrency ?? concurrency) }, worker));
     }),
   );
 
@@ -106,19 +119,34 @@ export async function probe(config: Config, ledger: Ledger, run: Run, opts: Prob
   return summarize(config, ledger, date, false, budgetHit, failed);
 }
 
+export function isRateLimit(msg: string) {
+  return /\b429\b|rate limit/i.test(msg);
+}
+
 async function askWithRetry(
   engine: EngineAdapter,
   q: QuestionT,
   retries: number,
   sleep: (ms: number) => Promise<void>,
+  pace: () => Promise<void> = async () => {},
 ): Promise<EngineAnswer | { error: string }> {
   let last = "";
+  let rateWaits = 0;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      await pace();
       return await engine.ask(q.text);
     } catch (err) {
       if (err instanceof EngineAuthError) return { error: err.message };
       last = (err as Error).message ?? String(err);
+      // Rate limits are waited out (up to 5 times) and don't use up a retry.
+      if (isRateLimit(last) && rateWaits < 5) {
+        rateWaits++;
+        attempt--;
+        const after = Number(/retry after (\d+)\s*s/i.exec(last)?.[1] ?? 60);
+        await sleep(Math.min(after, 120) * 1000);
+        continue;
+      }
       if (attempt < retries) await sleep(1000 * 2 ** attempt);
     }
   }

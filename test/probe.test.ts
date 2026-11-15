@@ -112,3 +112,16 @@ describe("map", () => {
     expect(citationMap(config, ledger, "2026-11-15", { topic: "reliability" })[0].questions).toBe(1);
   });
 });
+
+describe("rate limits", () => {
+  it("waits out 429s without using up retries", async () => {
+    const config = testConfig({ questions: [{ id: "q1", text: "q", topic: "t" }], engines: [{ id: "perplexity" }], probe: { samples: 1, budgetUsd: 5, maxRetries: 0 } });
+    const ledger = tempLedger();
+    const waits: number[] = [];
+    let n = 0;
+    const engine = fakeEngine("perplexity", () => (n++ < 2 ? new Error("Rate limit exceeded ... Retry after 7s.") : ans("ok", [])));
+    const s = await probe(config, ledger, ledger.startRun("probe", "2026-11-15"), { engines: [engine], sleep: async (ms) => void waits.push(ms) });
+    expect(s.enginesOk).toBe(1);
+    expect(waits).toEqual([7000, 7000]);
+  });
+});
