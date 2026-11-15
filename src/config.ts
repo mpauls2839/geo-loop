@@ -116,6 +116,8 @@ export const ConfigSchema = z.object({
       testDataset: z.string().default("geo-loop-test"),
       postType: z.string().default("post"),
       apiVersion: z.string().default("2025-02-19"),
+      // Optional: your Sanity Studio address, so the dashboard can link each change into Studio.
+      studioUrl: z.string().url().optional(),
     })
     .optional(),
   github: z

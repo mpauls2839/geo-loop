@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join, resolve } from "node:path";
 import type { Config } from "../config.js";
 import type { Ledger } from "../lib/ledger.js";
+import { summarizeChange, type ChangeSummary, type PostVersion } from "../lib/diff.js";
+import { ptToMd } from "../lib/portable.js";
 import { registeredDomain } from "../lib/urls.js";
 import { redact } from "./report.js";
 
@@ -20,8 +22,15 @@ const host = (u: string) => {
   }
 };
 
-type Proposal = {
+export type Proposal = {
   id: string;
+  docId?: string;
+  bodyMd?: string;
+  files?: string[];
+  summary?: ChangeSummary;
+  changeHref?: string;
+  prLink?: string;
+  studioLink?: string;
   changeId?: string;
   lane?: string;
   link?: string;
@@ -37,7 +46,7 @@ type Proposal = {
   verdictReason?: string;
 };
 
-function readProposals(dir: string): Proposal[] {
+export function readProposals(dir: string): Proposal[] {
   if (!existsSync(dir)) return [];
   const files = readdirSync(dir);
   const out: Proposal[] = [];
@@ -70,15 +79,21 @@ function readProposals(dir: string): Proposal[] {
     let status: Proposal["status"] = "eval only";
     let reason = verdictReason ?? "";
     let changeId: string | undefined;
+    let docId: string | undefined;
     if (existsSync(shipFile)) {
-      const first = readFileSync(shipFile, "utf8").split("\n")[0].trim().split(/\s{2,}/);
+      const shipText = readFileSync(shipFile, "utf8");
+      docId = /"id":\s*"([^"]+)"/.exec(shipText)?.[1];
+      const first = shipText.split("\n")[0].trim().split(/\s{2,}/);
       status = first[0] === "dry_run" || first[0] === "shipped" ? "would ship" : "held";
       changeId = first[1];
       if (status === "held") reason = first.slice(2).join(" ") || reason;
     }
-    const content = (change.content ?? {}) as { title?: string; excerpt?: string };
+    const content = (change.content ?? {}) as { title?: string; excerpt?: string; body?: unknown; files?: { path: string }[] };
     out.push({
       id: base,
+      docId,
+      bodyMd: typeof content.body === "string" ? content.body : content.body ? ptToMd(content.body) : undefined,
+      files: content.files?.map((f) => f.path),
       changeId,
       lane: String(change.lane ?? "refresh"),
       target: String(change.target ?? base),
@@ -111,7 +126,25 @@ function laneText(lane?: string): string {
   return "Update to an existing live post";
 }
 
-export function buildDashboard(config: Config, ledger: Ledger, opts: { date?: string; env?: NodeJS.ProcessEnv; now?: Date; proposedDir?: string } = {}): string {
+export type DashboardOptions = {
+  date?: string;
+  env?: NodeJS.ProcessEnv;
+  now?: Date;
+  proposedDir?: string;
+  /** Current live versions of refresh targets (read from the CMS), keyed by slug. */
+  befores?: Record<string, PostVersion>;
+  /** Prefix for links to sibling files (history pages live one folder down). */
+  linkPrefix?: string;
+};
+
+export function changeType(p: Proposal): { type: string; details: string } {
+  if (p.lane === "new_post") return { type: "New blog post", details: p.title ?? "" };
+  if (p.lane === "code_pr") return { type: "Site code change", details: (p.files ?? []).join(", ") };
+  if (p.summary) return { type: p.summary.type, details: p.summary.details.join(" · ") };
+  return { type: "Update to an existing post", details: "" };
+}
+
+export function buildDashboard(config: Config, ledger: Ledger, opts: DashboardOptions = {}): string {
   const db = ledger.db;
   const date =
     opts.date ?? ((db.prepare("SELECT MAX(date) AS d FROM probe_answers WHERE error IS NULL").get() as { d: string | null }).d ?? "");
@@ -167,13 +200,15 @@ export function buildDashboard(config: Config, ledger: Ledger, opts: { date?: st
       ? (db.prepare("SELECT external_ref, lane FROM changes WHERE id = ?").get(p.changeId) as { external_ref: string | null; lane: string } | undefined)
       : undefined;
     const ref = row?.external_ref ? (JSON.parse(row.external_ref) as { prUrl?: string; pr?: number }) : {};
-    if (ref.prUrl) {
-      p.link = ref.prUrl;
-      p.linkLabel = `PR #${ref.pr ?? ""}`.trim();
-    } else if ((row?.lane ?? p.lane) !== "code_pr") {
-      p.link = base + p.target;
-      p.linkLabel = "live post";
+    const lane = row?.lane ?? p.lane;
+    if (ref.prUrl) p.prLink = ref.prUrl;
+    if (lane !== "code_pr") p.link = base + p.target;
+    if (config.sanity?.studioUrl && p.docId) {
+      p.studioLink = `${config.sanity.studioUrl.replace(/\/$/, "")}/intent/edit/id=${encodeURIComponent(p.docId.replace(/^drafts\./, ""))};type=${encodeURIComponent(config.sanity.postType)}/`;
     }
+    const before = opts.befores?.[p.target];
+    if (lane === "refresh" && before && p.bodyMd) p.summary = summarizeChange(before, { title: p.title, excerpt: p.excerpt, md: p.bodyMd });
+    if (p.bodyMd || p.files?.length) p.changeHref = `${opts.linkPrefix ?? ""}changes/${date}/${p.id}.html`;
   }
   const drafts = db.prepare("SELECT kind, target_url, body, status, meta FROM drafts WHERE date = ? AND status = 'new' ORDER BY kind DESC, target_url").all(date) as {
     kind: string; target_url: string; body: string; status: string; meta: string;
@@ -265,6 +300,7 @@ td.heat.na{background:transparent;color:var(--muted)}
 .run.ok{border-color:color-mix(in srgb,var(--good) 50%,var(--line))}.run.partial{border-color:color-mix(in srgb,var(--warn) 60%,var(--line))}.run.failed{border-color:var(--bad)}
 .card h3 a,.card h3 a:visited{color:inherit;text-decoration:none;border-bottom:1.5px solid color-mix(in srgb,var(--accent) 55%,transparent)}.card h3 a:hover{color:var(--accent)}
 .chip.plat-x{background:#111;color:#fff}.chip.plat-linkedin{background:#0a66c2;color:#fff}.chip.plat-bluesky{background:#1185fe;color:#fff}.chip.plat-reddit{background:#ff4500;color:#fff}.chip.plat-hn{background:#ff6600;color:#fff}.chip.plat-threads{background:#000;color:#fff}
+.ctype{font-size:17px;font-weight:750}.links{font-size:13px}.links a{color:var(--accent);text-decoration:none;font-weight:600}
 .hist{margin:-8px 0 14px;color:var(--muted);font-size:13px}.hist a{color:var(--accent)}
 .muted{color:var(--muted)}footer{color:var(--muted);font-size:12px;text-align:center;margin-top:24px}
 @media (max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}.loop{grid-template-columns:repeat(4,1fr)}.step:nth-child(4)::after{display:none}.grid2{grid-template-columns:1fr}}
@@ -312,18 +348,17 @@ ${qRows.map(({ q, byEngine }) => `<tr><td>${esc(q.text)}<div class="tier">${isEx
 </table></section>
 
 <section><h2>What the loop wants to change</h2><p class="lede">Each draft is scored by blind judges (fresh sub-agents shown anonymized pages: "which would you cite?"). Only passes ship; guardrails hold the rest.</p>
-<div class="cards">${proposals.map((p) => `<div class="card">
+<div class="cards">${proposals.map((p) => { const ct = changeType(p); return `<div class="card">
 <span class="badge ${p.status === "would ship" ? "ship" : p.status === "held" ? "held" : "eval"}">${badgeText(p, config.shipMode === "dry_run")}</span>
-<div class="tier">${esc(laneText(p.lane))}</div>
-<h3>${p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">/${esc(p.target)} ↗</a>` : `/${esc(p.target)}`}${/\.pass(\d+)$/.test(p.id) ? ` <span class="muted" style="font-weight:500">· retry</span>` : ""}</h3>
-${p.linkLabel ? `<div class="tier">${esc(p.linkLabel)}</div>` : ""}
-${p.title || p.excerpt ? `<div class="why">${esc(p.title ?? p.excerpt)}</div>` : ""}
+<div class="ctype">${esc(ct.type)}</div>${ct.details ? `<div class="why">${esc(ct.details)}</div>` : ""}
+<h3>${p.changeHref ? `<a href="${esc(p.changeHref)}" target="_blank" rel="noopener">/${esc(p.target)} ↗</a>` : p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">/${esc(p.target)} ↗</a>` : `/${esc(p.target)}`}${/\.pass(\d+)$/.test(p.id) ? ` <span class="muted" style="font-weight:500">· retry</span>` : ""}</h3>
+<div class="links">${[p.changeHref ? `<a href="${esc(p.changeHref)}" target="_blank" rel="noopener">See the change</a>` : "", p.prLink ? `<a href="${esc(p.prLink)}" target="_blank" rel="noopener">Pull request</a>` : "", p.studioLink ? `<a href="${esc(p.studioLink)}" target="_blank" rel="noopener">Open in Sanity</a>` : "", p.link ? `<a href="${esc(p.link)}" target="_blank" rel="noopener">Live post</a>` : ""].filter(Boolean).join(" · ")}</div>
 ${p.rows.map((r) => `<div class="qid">${esc(qById.get(r.q)?.text ?? r.q)}</div>
 <div class="vs"><span class="muted">live page</span>${bar((r.live ?? 0) * 10, 10, "live")}<span class="num">${r.live == null ? "–" : Math.round(r.live * 10) + "/10"}</span></div>
 <div class="vs"><span><b>draft</b></span>${bar((r.draft ?? 0) * 10, 10, "draft")}<span class="num"><b>${r.draft == null ? "–" : Math.round(r.draft * 10) + "/10"}</b></span></div>`).join("")}
 <div class="why">${esc(p.status === "held" ? `Held: ${p.reason}` : p.verdictReason ?? "")}</div>
 <div>${p.techniques.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</div>
-</div>`).join("") || `<p class="muted">No proposals for this date.</p>`}</div></section>
+</div>`; }).join("") || `<p class="muted">No proposals for this date.</p>`}</div></section>
 
 <section><h2>Outreach drafts for a human</h2><p class="lede">Mentions on other sites drive AI visibility, so the loop drafts replies and pitches. It never posts anything itself.</p>
 <div class="cards">${drafts.map((d) => {
@@ -346,7 +381,51 @@ ${p.rows.map((r) => `<div class="qid">${esc(qById.get(r.q)?.text ?? r.q)}</div>
  * Writes report/dashboard.html (always the latest) and report/history/<date>.html (one per run date,
  * kept forever), each linking to the other dates.
  */
-export function writeDashboard(config: Config, ledger: Ledger, outDir?: string, opts: Parameters<typeof buildDashboard>[2] = {}): string {
+/** A before/after page for one proposed change: what it changes, and every paragraph added or removed. */
+export function buildChangePage(config: Config, p: Proposal, before: PostVersion | undefined, date: string, env: NodeJS.ProcessEnv = process.env): string {
+  const base = config.site.baseUrl.replace(/\/$/, "") + config.site.blogPath.replace(/\/?$/, "/");
+  const after: PostVersion = { title: p.title, excerpt: p.excerpt, md: p.bodyMd ?? "" };
+  const summary = p.lane === "refresh" && before ? summarizeChange(before, after) : undefined;
+  const ct = summary ? { type: summary.type, details: summary.details.join(" · ") } : changeType(p);
+  const meta = (label: string, b?: string, a?: string) =>
+    a && (!b || b.trim() !== a.trim())
+      ? `<div class="meta"><div class="k">${label}</div>${b ? `<div class="old">${esc(b)}</div>` : ""}<div class="new">${esc(a)}</div></div>`
+      : b ? `<div class="meta"><div class="k">${label} (unchanged)</div><div>${esc(b)}</div></div>` : "";
+  const md = (t: string) => esc(t).replace(/^(#{1,4})\s+(.*)$/gm, (_m, h: string, x: string) => `<b class="h${h.length}">${x}</b>`).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");
+  const body = summary
+    ? summary.diff.map((d) => `<div class="blk ${d.kind}">${d.kind === "added" ? "<span class=tag>+ added</span>" : d.kind === "removed" ? "<span class=tag>− removed</span>" : ""}${md(d.text)}</div>`).join("")
+    : p.files?.length
+      ? `<p class="muted">Files in this pull request: ${p.files.map((f) => `<code>${esc(f)}</code>`).join(", ")}</p>`
+      : (p.bodyMd ?? "").split(/\n{2,}/).map((t) => `<div class="blk added">${md(t)}</div>`).join("");
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Change · /${esc(p.target)}</title><style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#16181d;--muted:#6b7080;--line:#e6e3dc;--add:#e6f6ec;--addb:#14935a;--del:#fdecec;--delb:#c2410c;--accent:#2f6df6}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#171a21;--ink:#eef0f4;--muted:#9aa1b2;--line:#262b36;--add:#12301f;--addb:#3ccf8e;--del:#3a1a14;--delb:#ff7a45;--accent:#6b9bff}}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}.wrap{max-width:860px;margin:0 auto;padding:28px 20px 60px}
+h1{font-size:26px;margin:4px 0}.type{font-size:18px;font-weight:750}.muted{color:var(--muted)}a{color:var(--accent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin:14px 0}
+.meta{margin:10px 0}.meta .k{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.old{background:var(--del);border-left:3px solid var(--delb);padding:6px 10px;text-decoration:line-through;opacity:.85}.new{background:var(--add);border-left:3px solid var(--addb);padding:6px 10px;margin-top:4px}
+.blk{padding:8px 12px;border-left:3px solid transparent;white-space:pre-wrap}.blk.same{color:var(--muted)}.blk.added{background:var(--add);border-left-color:var(--addb)}.blk.removed{background:var(--del);border-left-color:var(--delb);text-decoration:line-through;opacity:.85}
+.tag{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-decoration:none}
+b.h2{font-size:19px}b.h3{font-size:17px}b.h4{font-size:15px}
+</style></head><body><div class="wrap">
+<div class="muted">geo-loop · proposed change · ${esc(date)} · ${config.shipMode === "dry_run" ? "dry run, not published" : esc(p.status)}</div>
+<h1>/${esc(p.target)}</h1>
+<div class="type">${esc(ct.type)}</div><div class="muted">${esc(ct.details)}</div>
+<p>${[p.prLink ? `<a href="${esc(p.prLink)}">Pull request</a>` : "", p.studioLink ? `<a href="${esc(p.studioLink)}">Open in Sanity</a>` : "", p.lane !== "code_pr" ? `<a href="${esc(base + p.target)}">Live post</a>` : ""].filter(Boolean).join(" · ")}</p>
+<div class="card">${meta("Title", before?.title, p.title)}${meta("Meta description", before?.excerpt, p.excerpt)}</div>
+<div class="card">${before || p.files?.length ? "" : `<p class="muted">The live version wasn't available when this page was made, so this shows the full proposed text.</p>`}${body}</div>
+</div></body></html>`;
+  return redact(html, env);
+}
+
+/**
+ * Writes report/dashboard.html (always the latest), report/history/<date>.html (one per run date,
+ * kept forever, each linking to the other dates) and report/changes/<date>/<proposal>.html
+ * (a before/after page per proposed change).
+ */
+export function writeDashboard(config: Config, ledger: Ledger, outDir?: string, opts: DashboardOptions = {}): string {
   const dir = resolve(outDir ?? resolve(config.dataDir, "report"));
   const histDir = join(dir, "history");
   mkdirSync(histDir, { recursive: true });
@@ -355,10 +434,24 @@ export function writeDashboard(config: Config, ledger: Ledger, outDir?: string, 
   const dates = [...new Set([...readdirSync(histDir).filter((f) => /^\d{4}-\d{2}-\d{2}\.html$/.test(f)).map((f) => f.slice(0, 10)), date])].sort().reverse();
   const nav = (prefix: string) =>
     `<nav class="hist">Runs: ${dates.map((d) => (d === date ? `<b>${esc(d)}</b>` : `<a href="${prefix}${esc(d)}.html">${esc(d)}</a>`)).join(" · ")}</nav>`;
-  const html = buildDashboard(config, ledger, { ...opts, date });
-  const inject = (prefix: string) => html.replace("</header>", `</header>${nav(prefix)}`);
-  writeFileSync(join(histDir, `${date}.html`), inject(""));
+  const page = (linkPrefix: string, navPrefix: string) =>
+    buildDashboard(config, ledger, { ...opts, date, linkPrefix }).replace("</header>", `</header>${nav(navPrefix)}`);
+  writeFileSync(join(histDir, `${date}.html`), page("../", ""));
   const file = join(dir, "dashboard.html");
-  writeFileSync(file, inject("history/"));
+  writeFileSync(file, page("", "history/"));
+
+  // Before/after pages for each proposal.
+  const proposals = readProposals(opts.proposedDir ?? resolve(config.dataDir, "proposed", date));
+  const changesDir = join(dir, "changes", date);
+  mkdirSync(changesDir, { recursive: true });
+  for (const p of proposals) {
+    if (!p.bodyMd && !p.files?.length) continue;
+    const docLink = config.sanity?.studioUrl && p.docId
+      ? `${config.sanity.studioUrl.replace(/\/$/, "")}/intent/edit/id=${encodeURIComponent(p.docId.replace(/^drafts\./, ""))};type=${encodeURIComponent(config.sanity.postType)}/`
+      : undefined;
+    const row = ledger.db.prepare("SELECT external_ref FROM changes WHERE id = ?").get(p.changeId ?? "") as { external_ref: string | null } | undefined;
+    const ref = row?.external_ref ? (JSON.parse(row.external_ref) as { prUrl?: string }) : {};
+    writeFileSync(join(changesDir, `${p.id}.html`), buildChangePage(config, { ...p, studioLink: docLink, prLink: ref.prUrl }, opts.befores?.[p.target], date, opts.env));
+  }
   return file;
 }

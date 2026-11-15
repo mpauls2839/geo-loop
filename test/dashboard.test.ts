@@ -20,7 +20,7 @@ describe("dashboard", () => {
     ledger.startRun("probe", "2026-11-15").finish("ok");
     const dir = mkdtempSync(join(tmpdir(), "prop-"));
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "post-a.change.json"), JSON.stringify({ target: "post-a", techniques: ["answer-first"], content: { title: "Better title" } }));
+    writeFileSync(join(dir, "post-a.change.json"), JSON.stringify({ lane: "refresh", target: "post-a", techniques: ["answer-first"], content: { title: "Better title", body: "## Intro\n\nnew answer first\n\n## Setup\n\nsteps\n\n## FAQ\n\nq and a" } }));
     writeFileSync(join(dir, "post-a.eval.json"), JSON.stringify({ rows: [{ questionId: "q1", live: { winRate: 0 }, draft: { winRate: 1 } }], decision: { verdict: "pass", reason: "avg delta +100 pts" } }));
     writeFileSync(join(dir, "post-a.ship-dry-run.txt"), "dry_run     2026-11-15-refresh-post-a  dry_run\npayload {}");
     writeFileSync(join(dir, "post-b.change.json"), JSON.stringify({ target: "post-b" }));
@@ -44,7 +44,13 @@ describe("dashboard", () => {
     expect(buildDashboard(config, ledger, { date: "2026-11-15", proposedDir: dir })).toContain('href="https://github.com/o/r/pull/7"');
     const live = buildDashboard(testConfig(), ledger, { date: "2026-11-15", proposedDir: dir });
     expect(live).toContain("✓ UPDATED");
-    expect(html).toContain("Update to an existing live post");
+    expect(html).toContain("Update to an existing post"); // no live version supplied: generic type
+    const withBefore = buildDashboard(config, ledger, {
+      date: "2026-11-15", proposedDir: dir,
+      befores: { "post-a": { title: "Old title", md: "## Intro\n\nold text\n\n## Setup\n\nsteps" } },
+    });
+    expect(withBefore).toMatch(/Major rewrite|New sections added|Wording edits/);
+    expect(withBefore).toContain('href="changes/2026-11-15/post-a.html"');
   });
 });
 
