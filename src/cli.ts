@@ -9,6 +9,13 @@ import { probe } from "./commands/probe.js";
 
 for (const f of [".env", ".env.local"]) if (existsSync(f)) process.loadEnvFile(f);
 
+// Hosted agents (e.g. Claude Code cloud sessions) can reserve or strip names like ANTHROPIC_API_KEY.
+// GEO_LOOP_<NAME> is an alias that fills <NAME> when it is unset.
+for (const [k, v] of Object.entries(process.env)) {
+  const name = k.startsWith("GEO_LOOP_") ? k.slice("GEO_LOOP_".length) : "";
+  if (name && v && !process.env[name]) process.env[name] = v;
+}
+
 const program = new Command("geo-loop")
   .description("SEO/GEO improvement loop: probe AI engines, map citations, ship gated changes, measure, adapt.")
   .option("-c, --config <path>", "config file (default: geo-loop.config.{ts,mjs,js,json})")

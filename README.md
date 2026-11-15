@@ -28,7 +28,7 @@ geo-loop map
 
 ### Keys
 
-Each engine uses its provider's own key when present, otherwise a Vercel AI Gateway key:
+Each engine uses its provider's own key when present, otherwise a Vercel AI Gateway key. Any key can also be given as `GEO_LOOP_<NAME>` (e.g. `GEO_LOOP_ANTHROPIC_API_KEY`) for hosts that reserve the plain name, such as Claude Code cloud sessions:
 
 | Engine | Direct key | Via gateway |
 |---|---|---|
