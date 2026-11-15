@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 const GATEWAY_BASE = "https://ai-gateway.vercel.sh";
+// Pinned so an inherited ANTHROPIC_BASE_URL (e.g. a proxy) never receives the user's key.
+const ANTHROPIC_DIRECT = "https://api.anthropic.com";
 
 export type ClaudeHandle = { client: Anthropic; model: (m: string) => string; via: "direct" | "gateway" };
 
@@ -11,7 +13,7 @@ export type ClaudeHandle = { client: Anthropic; model: (m: string) => string; vi
  */
 export function claude(env = process.env): ClaudeHandle {
   if (env.ANTHROPIC_API_KEY) {
-    return { client: new Anthropic({ apiKey: env.ANTHROPIC_API_KEY }), model: (m) => m, via: "direct" };
+    return { client: new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, baseURL: ANTHROPIC_DIRECT }), model: (m) => m, via: "direct" };
   }
   if (env.AI_GATEWAY_API_KEY) {
     return {

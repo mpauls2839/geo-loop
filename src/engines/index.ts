@@ -17,6 +17,8 @@ export interface EngineAdapter {
 }
 
 const GATEWAY_BASE = "https://ai-gateway.vercel.sh";
+// Pinned so an inherited ANTHROPIC_BASE_URL (e.g. a proxy) never receives the user's key.
+const ANTHROPIC_DIRECT = "https://api.anthropic.com";
 const DEFAULT_MODELS = { claude: "claude-opus-5-5", chatgpt: "gpt-5.4-mini", perplexity: "sonar" } as const;
 const ENV_KEYS = { claude: "ANTHROPIC_API_KEY", chatgpt: "OPENAI_API_KEY", perplexity: "PERPLEXITY_API_KEY" } as const;
 const GATEWAY_PREFIX = { claude: "anthropic", chatgpt: "openai", perplexity: "perplexity" } as const;
@@ -56,9 +58,11 @@ const SYSTEM =
   "recommend specific tools or resources where relevant, and cite your sources.";
 
 function claudeEngine(model: string, auth: { via: "direct" | "gateway"; key: string }): EngineAdapter {
-  const client = new Anthropic({ apiKey: auth.key, ...(auth.via === "gateway" ? { baseURL: GATEWAY_BASE } : {}) });
-  // The gateway documents the basic search tool; direct calls get the dynamic-filtering version.
-  const toolType = auth.via === "gateway" ? "web_search_20250305" : "web_search_20260209";
+  const client = new Anthropic({ apiKey: auth.key, baseURL: auth.via === "gateway" ? GATEWAY_BASE : ANTHROPIC_DIRECT });
+  // The basic search tool attaches citations to the answer text, like a consumer chat does.
+  // The dynamic-filtering version (web_search_20260209) filters results in code execution and
+  // returns an answer without citation blocks, which would make every probe look uncited.
+  const toolType = "web_search_20250305";
   return {
     id: "claude",
     model,
@@ -94,13 +98,18 @@ function claudeEngine(model: string, auth: { via: "direct" | "gateway"; key: str
           if (c.type === "web_search_result_location") cited.push(c.url);
         }
       }
+      // Fallback: URLs the answer links to that came from its own search results.
+      if (!cited.length) {
+        const found = new Set(content.flatMap((b) => (b.type === "web_search_tool_result" && Array.isArray(b.content) ? b.content.map((r) => r.url) : [])));
+        for (const m of text.matchAll(/https?:\/\/[^\s)\]>"']+/g)) if (found.has(m[0])) cited.push(m[0]);
+      }
       return { text, citedUrls: dedupe(cited), costUsd: EST_COST.claude, model };
     },
   };
 }
 
 function chatgptEngine(model: string, auth: { via: "direct" | "gateway"; key: string }): EngineAdapter {
-  const client = new OpenAI({ apiKey: auth.key, ...(auth.via === "gateway" ? { baseURL: `${GATEWAY_BASE}/v1` } : {}) });
+  const client = new OpenAI({ apiKey: auth.key, baseURL: auth.via === "gateway" ? `${GATEWAY_BASE}/v1` : "https://api.openai.com/v1" });
   return {
     id: "chatgpt",
     model,

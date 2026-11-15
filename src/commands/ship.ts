@@ -12,6 +12,7 @@ import {
   shippedToTarget, shippedToTargetOn, slugImmutable, unsourcedNumbers,
   type CtaMatcher, type GateResult, type Lane, type PtBlock,
 } from "../lib/gates.js";
+import { toPt } from "../lib/portable.js";
 import { defaultCheckPaths, mergeGate, type FileChange, type GithubPort, type LocalCheck } from "../lib/github.js";
 import type { Ledger, Run } from "../lib/ledger.js";
 import { makeHeroImage, renderTitleCardPng, type TitleCardInput } from "../lib/ogimage.js";
@@ -23,7 +24,8 @@ import {
 // ---------- change.json ----------
 
 const Block = z.looseObject({ _type: z.string() });
-const Body = z.array(Block).min(1);
+// Portable Text, or a Markdown string converted at ship time (see lib/portable.ts).
+const Body = z.union([z.array(Block).min(1), z.string().min(1)]);
 const Source = z.object({ url: z.string(), text: z.string().default("") });
 export const EvalResult = z.looseObject({
   decision: z.enum(["pass", "fail"]),
@@ -363,7 +365,7 @@ async function shipRefresh(ctx: Ctx, change: z.infer<typeof RefreshChange>): Pro
   const live = await sanity.getPublishedBySlug(s.postType, F.slug, change.target);
   if (!live) return finish(ctx, "held", [`post "${change.target}" not found in dataset ${sanity.dataset}`]);
 
-  const c = change.content;
+  const c = { ...change.content, body: toPt(change.content.body, live[F.body]) };
   const liveSlug = (live[F.slug] as { current?: string } | undefined)?.current ?? "";
   const full = [c.title, c.excerpt, ...(c.tldr ?? []), ptToText(c.body)].filter(Boolean).join("\n");
   const prose = [c.title, c.excerpt, ...(c.tldr ?? []), ptToText(c.body, { skipCode: true })].filter(Boolean).join("\n");
@@ -431,7 +433,7 @@ async function shipNewPost(ctx: Ctx, change: z.infer<typeof NewPostChange>): Pro
   const sanity = deps.sanity;
   if (!sanity) return finish(ctx, "held", ["sanity not configured"]);
   const F = s.fields;
-  const c = change.content;
+  const c = { ...change.content, body: toPt(change.content.body) };
   if (change.target !== c.slug) return finish(ctx, "held", [`target "${change.target}" must equal content.slug "${c.slug}"`]);
 
   const existing = await sanity.getPublishedBySlug(s.postType, F.slug, c.slug);

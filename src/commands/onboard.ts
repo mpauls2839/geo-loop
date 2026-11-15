@@ -133,7 +133,7 @@ export async function checkKeys(
   if (an)
     await status("ANTHROPIC_API_KEY", async () => {
       try {
-        await new Anthropic({ apiKey: an, maxRetries: 0 }).models.list({ limit: 1 });
+        await new Anthropic({ apiKey: an, baseURL: "https://api.anthropic.com", maxRetries: 0 }).models.list({ limit: 1 });
         return { name: "ANTHROPIC_API_KEY", status: "ok", detail: "valid" };
       } catch (err) {
         if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError)
@@ -146,7 +146,7 @@ export async function checkKeys(
   if (oa)
     await status("OPENAI_API_KEY", async () => {
       try {
-        await new OpenAI({ apiKey: oa, maxRetries: 0 }).models.list();
+        await new OpenAI({ apiKey: oa, baseURL: "https://api.openai.com/v1", maxRetries: 0 }).models.list();
         return { name: "OPENAI_API_KEY", status: "ok", detail: "valid" };
       } catch (err) {
         if (err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError)
