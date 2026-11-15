@@ -99,8 +99,15 @@ function exempt(tok: NumberToken, text: string): boolean {
   if (/^(19|20)\d\d$/.test(tok.value)) return true; // years
   if (Number.isInteger(n) && n <= 10) return true; // small counts in how-to steps
   if (STEP_PREFIX.test(text.slice(Math.max(0, tok.index - 12), tok.index))) return true; // "step 12"
+  // Calendar dates: "15 November 2026", "November 15", "Nov 15, 2026" (a date is not a statistic).
+  if (Number.isInteger(n) && n >= 1 && n <= 31) {
+    const around = text.slice(Math.max(0, tok.index - 12), tok.index + tok.raw.length + 12);
+    if (new RegExp(`(${MONTHS})\\.?\\s+${tok.raw}\\b|\\b${tok.raw}(st|nd|rd|th)?\\s+(of\\s+)?(${MONTHS})\\b`, "i").test(around)) return true;
+  }
   return false;
 }
+
+const MONTHS = "jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?";
 
 /**
  * Every number/percentage/money figure in `text` must appear in a source, the product-facts file,

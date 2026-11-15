@@ -48,9 +48,11 @@ export type Proposal = {
 
 export function readProposals(dir: string): Proposal[] {
   if (!existsSync(dir)) return [];
-  const files = readdirSync(dir);
+  // Runs may group proposals in sub-folders (e.g. proposed/<date>/weekly/); read them all.
+  const files = (readdirSync(dir, { recursive: true }) as string[]).map(String).filter((x) => x.endsWith(".change.json"));
   const out: Proposal[] = [];
-  for (const f of files.filter((x) => x.endsWith(".change.json"))) {
+  const seenIds = new Set<string>();
+  for (const f of files) {
     const base = f.replace(/\.change\.json$/, "");
     let change: Record<string, unknown> = {};
     try {
@@ -89,8 +91,11 @@ export function readProposals(dir: string): Proposal[] {
       if (status === "held") reason = first.slice(2).join(" ") || reason;
     }
     const content = (change.content ?? {}) as { title?: string; excerpt?: string; body?: unknown; files?: { path: string }[] };
+    const id = base.replace(/[\\/]/g, "--");
+    if (seenIds.has(id)) continue;
+    seenIds.add(id);
     out.push({
-      id: base,
+      id,
       docId,
       bodyMd: typeof content.body === "string" ? content.body : content.body ? ptToMd(content.body) : undefined,
       files: content.files?.map((f) => f.path),

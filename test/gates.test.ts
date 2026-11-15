@@ -137,3 +137,12 @@ describe("caps, idempotency, allowlist, secrets", () => {
     expect(noSecrets("x sk-abcdef123456", ["sk-abcdef123456"]).pass).toBe(false);
   });
 });
+
+describe("unsourced numbers: dates", () => {
+  it("treats calendar dates as dates, not statistics", () => {
+    for (const t of ["Checked on 15 November 2026.", "Updated November 15, 2026.", "As of Nov 3 the docs say so.", "On the 21st of October it changed."]) {
+      expect(unsourcedNumbers(t, { sources: [], facts: "" }).pass).toBe(true);
+    }
+    expect(unsourcedNumbers("It cut failures by 15 percent in November.", { sources: [], facts: "" }).pass).toBe(false);
+  });
+});

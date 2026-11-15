@@ -80,3 +80,17 @@ describe("Sanity Studio links", () => {
     expect(studioDocUrl("https://acme.sanity.studio/", "abc", "post")).toBe("https://acme.sanity.studio/intent/edit/id=abc;type=post/");
   });
 });
+
+describe("proposals in sub-folders", () => {
+  it("reads proposals grouped in sub-folders of proposed/<date>", async () => {
+    const { readProposals } = await import("../src/commands/dashboard.ts");
+    const dir = mkdtempSync(join(tmpdir(), "props-"));
+    mkdirSync(join(dir, "weekly"), { recursive: true });
+    writeFileSync(join(dir, "a.change.json"), JSON.stringify({ lane: "refresh", target: "a" }));
+    writeFileSync(join(dir, "weekly", "b.change.json"), JSON.stringify({ lane: "new_post", target: "b" }));
+    writeFileSync(join(dir, "weekly", "b.ship-dry-run.txt"), "dry_run     2026-11-15-new_post-b  dry_run\n");
+    const ps = readProposals(dir);
+    expect(ps.map((p) => p.target).sort()).toEqual(["a", "b"]);
+    expect(ps.find((p) => p.target === "b")).toMatchObject({ status: "would ship", lane: "new_post", id: "weekly--b" });
+  });
+});
