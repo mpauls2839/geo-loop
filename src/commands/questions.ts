@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { Config, QuestionsFile, QuestionT } from "../config.js";
 import { classifyUrl } from "../lib/fetchmeta.js";
 import type { Ledger } from "../lib/ledger.js";
-import { autocomplete, gscQueries, loadServiceAccount, type GscRow } from "../lib/searchdata.js";
+import { autocomplete, gscQueries, loadGscAuth, type GscRow } from "../lib/searchdata.js";
 import { registeredDomain } from "../lib/urls.js";
 
 // Question discovery from real search data. Candidates come from:
@@ -62,7 +62,7 @@ export async function suggestQuestions(config: Config, ledger: Ledger, deps: Sug
   const on = new Set(config.discovery.sources);
 
   if (on.has("gsc")) {
-    if (!deps.gsc) notes.push("gsc: skipped (no GSC_SERVICE_ACCOUNT_JSON/FILE or site URL)");
+    if (!deps.gsc) notes.push("gsc: skipped (sign in with `geo-loop auth gsc` or set a service-account key, plus GSC_SITE_URL)");
     else {
       try {
         const rows = await deps.gsc();
@@ -178,11 +178,11 @@ export function writeQuestionsFile(path: string, f: QuestionsFile) {
 
 export function defaultSuggestDeps(config: Config, env = process.env): SuggestDeps {
   const site = config.discovery.gscSiteUrl ?? env.GSC_SITE_URL;
-  let sa: ReturnType<typeof loadServiceAccount> = null;
+  let auth: ReturnType<typeof loadGscAuth> = null;
   try {
-    sa = loadServiceAccount(env);
+    auth = loadGscAuth(env);
   } catch {
-    sa = null;
+    auth = null;
   }
-  return { gsc: sa && site ? () => gscQueries({ siteUrl: site, sa: sa! }) : undefined };
+  return { gsc: auth && site ? () => gscQueries({ siteUrl: site, auth: auth! }) : undefined };
 }

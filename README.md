@@ -50,10 +50,17 @@ The probe asks AI engines your buyers' questions. `geo-loop onboard` asks which 
 
 | Source | What it is | Needs |
 |---|---|---|
-| `gsc` | Non-brand queries your site already appears for, by impressions | Google Search Console service account (`GSC_SERVICE_ACCOUNT_JSON` or `_FILE`, `GSC_SITE_URL`) |
+| `gsc` | Non-brand queries your site already appears for, by impressions | Search Console access (below) and `GSC_SITE_URL` |
 | `engine` | The web searches AI engines themselves ran while answering your probe questions | Nothing (recorded by `probe`) |
 | `autocomplete` | Google's public suggestions for your category terms (`seedTerms`) | Nothing (unofficial public endpoint, rate-limited, best effort) |
 | `thread` | Titles of Reddit/forum threads AI engines cite for your topics | Nothing (from the probe's citations) |
+
+#### Connecting Search Console
+
+Two ways, both read-only:
+
+- **Your own Google sign-in (recommended, works when your org blocks service-account keys):** create an OAuth client of type **Desktop app** in Google Cloud (APIs & Services → Credentials; consent screen **Internal** if you're on Google Workspace, so the sign-in doesn't expire), put its id and secret in `.env` with `geo-loop onboard --only GSC_OAUTH_CLIENT_ID,GSC_OAUTH_CLIENT_SECRET`, then run `geo-loop auth gsc`. It opens Google sign-in, uses a loopback redirect with PKCE, and saves `GSC_OAUTH_REFRESH_TOKEN` to `.env`. For a cloud routine, copy the three `GSC_OAUTH_*` values into its environment.
+- **A service account:** `GSC_SERVICE_ACCOUNT_JSON` (base64 or raw) or `GSC_SERVICE_ACCOUNT_FILE`, with the account added as a user in Search Console.
 
 ### The eval judge
 
@@ -76,6 +83,7 @@ Shipping needs `SANITY_WRITE_TOKEN` (Sanity CMS lane) and `GITHUB_TOKEN` (code-P
 | Command | What it does |
 |---|---|
 | `geo-loop onboard` | Set up config and keys safely (hidden input, `.env` 600 + gitignored, free key checks) |
+| `geo-loop auth gsc` | Sign in with Google once to read Search Console (no service-account key) |
 | `geo-loop config check` | Validate config and keys |
 | `geo-loop questions list` / `suggest [--write]` | Show the questions, or discover new ones from real search data |
 | `geo-loop probe [--force]` | Ask every engine every question; record citations |

@@ -106,7 +106,7 @@ program
 
 // Each command module in src/commands/<name>.cli.ts exports register(program, ctx).
 // Modules are optional so slices can be built independently.
-const MODULES = ["onboard", "questions", "page", "eval", "ship", "revert", "drafts", "report", "run", "steer", "research"];
+const MODULES = ["onboard", "auth", "questions", "page", "eval", "ship", "revert", "drafts", "report", "run", "steer", "research"];
 for (const m of MODULES) {
   const file = new URL(`./commands/${m}.cli.ts`, import.meta.url);
   if (existsSync(file)) {
