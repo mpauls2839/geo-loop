@@ -28,9 +28,12 @@ export function register(program: Command, _ctx: () => Promise<Ctx>) {
     .option("--mode <mode>", "set questions.json mode before writing: user | data | hybrid")
     .option("--force", "write even in user mode")
     .action(async (o: { limit: string; write?: boolean; mode?: string; force?: boolean }) => {
-      const { config, path } = await loadConfig(program.opts().config, process.cwd(), { allowNoQuestions: true });
+      const { config, path, questionsFile } = await loadConfig(program.opts().config, process.cwd(), { allowNoQuestions: true });
       const ledger = new Ledger(resolve(config.dataDir, "ledger.db"));
-      const { candidates, notes } = await suggestQuestions(config, ledger, defaultSuggestDeps(config));
+      // Explore is re-ranked from scratch every time: dedupe candidates against core/config questions only.
+      const exploreIds = new Set(questionsFile?.explore.map((x) => x.id) ?? []);
+      const base = { ...config, questions: config.questions.filter((x) => !exploreIds.has(x.id)) };
+      const { candidates, notes } = await suggestQuestions(base, ledger, defaultSuggestDeps(config));
       const json = !!program.opts().json;
       if (json) console.log(JSON.stringify({ notes, candidates }, null, 2));
       else {
