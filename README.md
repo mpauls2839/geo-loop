@@ -6,8 +6,6 @@ An open-source CLI (plus a Claude skill) that improves how often AI engines and 
 2. **Changes** your content to close the gaps: new blog posts, rewrites of existing ones, and drafted replies to real social posts.
 3. **Tracks** the results week over week, so you can see which changes moved the numbers.
 
-![geo-loop dashboard](docs/dashboard.png)
-
 ## How it works
 
 1. **Onboard.** `geo-loop onboard` connects your analytics (Google Search Console) and collects model keys safely. One Vercel AI Gateway key is enough to query all the engines, or bring each provider's own key.
